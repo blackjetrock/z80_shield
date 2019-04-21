@@ -4,46 +4,54 @@ C 61500 39800 1 0 0 z80.sym
 T 61900 48050 5 10 0 0 0 0 1
 device=Z80
 T 64900 47800 5 10 1 1 0 6 1
-refdes=U?
+refdes=U1
 T 61900 48450 5 10 0 0 0 0 1
 footprint=DIP40
 }
 C 67100 46200 1 0 0 arduino-mega-digital.sym
 {
 T 68400 50300 5 10 1 1 0 0 1
-refdes=U?
+refdes=U5
 T 71050 48600 5 10 0 0 0 0 1
 device=Arduino-mega-Digital IO
+T 67100 46200 5 10 0 0 0 0 1
+footprint=arduino_mega_header
 }
 C 74300 39900 1 0 0 arduino-mega-power.sym
 {
 T 76700 41900 5 10 1 1 0 6 1
-refdes=U?
+refdes=U5
 T 74700 42100 5 10 0 0 0 0 1
 device=Arduino Mega2560
-T 74700 42300 5 10 0 0 0 0 1
-footprint=Arduino-mega-2560rev3
+T 74300 39900 5 10 0 0 0 0 1
+footprint=arduino_mega_header
 }
 C 56400 38800 1 0 1 arduino-mega-pwm.sym
 {
 T 54000 42400 5 10 1 1 0 0 1
-refdes=U?
+refdes=U5
 T 56000 42600 5 10 0 0 0 6 1
 device=Arduino-mega-pwm
+T 56400 38800 5 10 0 0 0 0 1
+footprint=arduino_mega_header
 }
 C 53500 45700 1 0 0 arduino-mega-communication.sym
 {
 T 56000 47700 5 10 1 1 0 6 1
-refdes=U?
+refdes=U5
 T 53900 48300 5 10 0 0 0 0 1
 device=Arduino-mega-communication
+T 53500 45700 5 10 0 0 0 0 1
+footprint=arduino_mega_header
 }
 C 71600 38400 1 0 0 arduino-mega-analog-in.sym
 {
 T 74000 42300 5 10 1 1 0 6 1
-refdes=U?
+refdes=U5
 T 72000 42200 5 10 0 0 0 0 1
 device=Arduino-mega-analog in
+T 71600 38400 5 10 0 0 0 0 1
+footprint=arduino_mega_header
 }
 U 66300 47700 66300 41200 10 -1
 N 65200 47500 66100 47500 4
@@ -455,7 +463,7 @@ device=none
 C 64600 28700 1 0 1 29x040-1.sym
 {
 T 62200 38400 5 10 1 1 0 0 1
-refdes=U?
+refdes=U7
 T 64200 38550 5 10 0 0 0 6 1
 device=29x040
 T 64200 38750 5 10 0 0 0 6 1
@@ -788,7 +796,7 @@ C 64700 48900 1 0 1 62256-2.sym
 T 64400 54950 5 10 0 0 0 6 1
 device=62256
 T 62400 54800 5 10 1 1 0 0 1
-refdes=U?
+refdes=U8
 T 64400 55350 5 10 0 0 0 6 1
 footprint=DIP28
 }
@@ -797,7 +805,7 @@ C 61800 56200 1 0 0 z80pio-1.sym
 T 62100 64350 5 10 0 0 0 0 1
 device=Z80PIO
 T 65100 64200 5 10 1 1 0 6 1
-refdes=U?
+refdes=U9
 T 62100 64750 5 10 0 0 0 0 1
 footprint=DIP40
 }
@@ -958,45 +966,55 @@ C 55100 54700 1 270 0 capacitor-1.sym
 T 55800 54500 5 10 0 0 270 0 1
 device=CAPACITOR
 T 55600 54500 5 10 1 1 270 0 1
-refdes=C?
+refdes=C1
 T 56000 54500 5 10 0 0 270 0 1
 symversion=0.1
+T 55100 54700 5 10 0 0 0 0 1
+footprint=0805
 }
 C 56000 54700 1 270 0 capacitor-1.sym
 {
 T 56700 54500 5 10 0 0 270 0 1
 device=CAPACITOR
 T 56500 54500 5 10 1 1 270 0 1
-refdes=C?
+refdes=C2
 T 56900 54500 5 10 0 0 270 0 1
 symversion=0.1
+T 56000 54700 5 10 0 0 0 0 1
+footprint=0805
 }
 C 56900 54700 1 270 0 capacitor-1.sym
 {
 T 57600 54500 5 10 0 0 270 0 1
 device=CAPACITOR
 T 57400 54500 5 10 1 1 270 0 1
-refdes=C?
+refdes=C3
 T 57800 54500 5 10 0 0 270 0 1
 symversion=0.1
+T 56900 54700 5 10 0 0 0 0 1
+footprint=0805
 }
 C 54200 54700 1 270 0 capacitor-1.sym
 {
 T 54900 54500 5 10 0 0 270 0 1
 device=CAPACITOR
 T 54700 54500 5 10 1 1 270 0 1
-refdes=C?
+refdes=C4
 T 55100 54500 5 10 0 0 270 0 1
 symversion=0.1
+T 54200 54700 5 10 0 0 0 0 1
+footprint=0805
 }
 C 53200 54700 1 270 0 capacitor-1.sym
 {
 T 53900 54500 5 10 0 0 270 0 1
 device=CAPACITOR
 T 53700 54500 5 10 1 1 270 0 1
-refdes=C?
+refdes=C5
 T 54100 54500 5 10 0 0 270 0 1
 symversion=0.1
+T 53200 54700 5 10 0 0 0 0 1
+footprint=0805
 }
 U 60000 47800 60000 55300 10 -1
 N 62100 54400 60200 54400 4
@@ -1157,7 +1175,9 @@ C 57500 43200 1 90 0 resistor-2.sym
 T 57150 43600 5 10 0 0 90 0 1
 device=RESISTOR
 T 57200 43400 5 10 1 1 90 0 1
-refdes=R?
+refdes=R1
+T 57500 43200 5 10 0 0 0 0 1
+footprint=res300
 }
 C 57200 44400 1 0 0 vcc-1.sym
 N 57400 44400 57400 44100 4
@@ -1331,7 +1351,7 @@ C 75400 56400 1 0 0 74138-1.sym
 T 75700 59250 5 10 0 0 0 0 1
 device=74138
 T 77100 59100 5 10 1 1 0 6 1
-refdes=U?
+refdes=U10
 T 75700 59650 5 10 0 0 0 0 1
 footprint=DIP16
 }
@@ -1484,7 +1504,7 @@ C 61800 64900 1 0 0 z80pio-1.sym
 T 62100 73050 5 10 0 0 0 0 1
 device=Z80PIO
 T 65100 72900 5 10 1 1 0 6 1
-refdes=U?
+refdes=U11
 T 62100 73450 5 10 0 0 0 0 1
 footprint=DIP40
 }
@@ -1686,7 +1706,7 @@ device=none
 C 61800 74300 1 0 0 z80-ctc.sym
 {
 T 65100 83200 5 10 1 1 0 6 1
-refdes=U?
+refdes=U12
 T 62100 83550 5 10 0 0 0 0 1
 device=Z80CTC
 T 62100 83950 5 10 0 0 0 0 1
@@ -1954,7 +1974,7 @@ C 75300 61700 1 0 0 74574-1.sym
 T 75600 65150 5 10 0 0 0 0 1
 device=74574
 T 77000 65000 5 10 1 1 0 6 1
-refdes=U?
+refdes=U13
 T 75600 65350 5 10 0 0 0 0 1
 footprint=DIP20
 }
@@ -2223,7 +2243,9 @@ C 67800 40700 1 90 0 resistor-2.sym
 T 67450 41100 5 10 0 0 90 0 1
 device=RESISTOR
 T 67500 40900 5 10 1 1 90 0 1
-refdes=R?
+refdes=R2
+T 67800 40700 5 10 0 0 0 0 1
+footprint=res300
 }
 C 67500 41800 1 0 0 vcc-1.sym
 N 67700 41600 67700 41800 4
@@ -2246,15 +2268,15 @@ C 74200 69100 1 0 0 arduino_uno.sym
 T 68200 66400 5 8 0 0 0 0 1
 device=arduino_header
 T 74600 75200 5 8 1 1 0 0 1
-refdes=J?
+refdes=J1
 T 68200 66200 5 8 0 0 0 0 1
 footprint=arduino_header
 T 77800 75200 5 8 1 1 0 0 1
-refdes=J?
+refdes=J2
 T 80800 75200 5 8 1 1 0 0 1
-refdes=J?
+refdes=J3
 T 83900 75200 5 8 1 1 0 0 1
-refdes=J?
+refdes=J4
 }
 C 72700 74900 1 0 0 vcc-1.sym
 N 72900 73300 72900 74900 4
@@ -2413,7 +2435,9 @@ C 70700 63200 1 0 1 MCP3008.sym
 T 70400 65550 5 10 0 0 0 6 1
 device=MCP3008
 T 69400 65700 5 10 1 1 0 6 1
-refdes=U?
+refdes=U14
+T 70700 63200 5 10 0 0 0 0 1
+footprint=ic-soic-16-n
 }
 U 72300 67300 72300 63100 10 -1
 N 70700 65400 72100 65400 4
@@ -2564,7 +2588,7 @@ T 67600 72200 5 8 0 0 270 0 1
 device=none
 }
 T 65100 72500 5 10 1 1 0 6 1
-refdes=U?
+refdes=U15
 N 65400 71800 67200 71800 4
 {
 T 65800 71800 5 10 1 1 0 0 1
@@ -2576,7 +2600,7 @@ T 67600 71800 5 8 0 0 270 0 1
 device=none
 }
 T 65100 72100 5 10 1 1 0 6 1
-refdes=U?
+refdes=U16
 N 65400 71400 67200 71400 4
 {
 T 65800 71400 5 10 1 1 0 0 1
@@ -2588,7 +2612,7 @@ T 67600 71400 5 8 0 0 270 0 1
 device=none
 }
 T 65100 71700 5 10 1 1 0 6 1
-refdes=U?
+refdes=U17
 N 65400 71000 67200 71000 4
 {
 T 65800 71000 5 10 1 1 0 0 1
@@ -2600,7 +2624,7 @@ T 67600 71000 5 8 0 0 270 0 1
 device=none
 }
 T 65100 71300 5 10 1 1 0 6 1
-refdes=U?
+refdes=U18
 N 65400 70600 67200 70600 4
 {
 T 65800 70600 5 10 1 1 0 0 1
@@ -2612,7 +2636,7 @@ T 67600 70600 5 8 0 0 270 0 1
 device=none
 }
 T 65100 70900 5 10 1 1 0 6 1
-refdes=U?
+refdes=U19
 N 65400 70200 67200 70200 4
 {
 T 65800 70200 5 10 1 1 0 0 1
@@ -2624,7 +2648,7 @@ T 67600 70200 5 8 0 0 270 0 1
 device=none
 }
 T 65100 70500 5 10 1 1 0 6 1
-refdes=U?
+refdes=U20
 N 65400 69800 67200 69800 4
 {
 T 65800 69800 5 10 1 1 0 0 1
@@ -2636,7 +2660,7 @@ T 67600 69800 5 8 0 0 270 0 1
 device=none
 }
 T 65100 70100 5 10 1 1 0 6 1
-refdes=U?
+refdes=U21
 N 65400 68600 67200 68600 4
 {
 T 65800 68600 5 10 1 1 0 0 1
@@ -2718,21 +2742,21 @@ T 67600 65800 5 8 0 0 270 0 1
 device=none
 }
 T 65100 68900 5 10 1 1 0 6 1
-refdes=U?
+refdes=U22
 T 65100 68500 5 10 1 1 0 6 1
-refdes=U?
+refdes=U23
 T 65100 68100 5 10 1 1 0 6 1
-refdes=U?
+refdes=U24
 T 65100 67700 5 10 1 1 0 6 1
-refdes=U?
+refdes=U25
 T 65100 67300 5 10 1 1 0 6 1
-refdes=U?
+refdes=U26
 T 65100 66900 5 10 1 1 0 6 1
-refdes=U?
+refdes=U27
 T 65100 66500 5 10 1 1 0 6 1
-refdes=U?
+refdes=U28
 T 65100 66100 5 10 1 1 0 6 1
-refdes=U?
+refdes=U29
 U 66200 56500 66200 65400 10 -1
 U 66200 65400 67400 65400 10 0
 N 68700 63900 66400 63900 4
@@ -2796,7 +2820,7 @@ T 66400 63500 5 8 0 0 270 0 1
 device=none
 }
 T 65100 63800 5 10 1 1 0 6 1
-refdes=U?
+refdes=U30
 N 65400 63100 66000 63100 4
 {
 T 65400 63100 5 10 1 1 0 0 1
@@ -2808,7 +2832,7 @@ T 66400 63100 5 8 0 0 270 0 1
 device=none
 }
 T 65100 63400 5 10 1 1 0 6 1
-refdes=U?
+refdes=U31
 N 65400 62700 66000 62700 4
 {
 T 65400 62700 5 10 1 1 0 0 1
@@ -2820,7 +2844,7 @@ T 66400 62700 5 8 0 0 270 0 1
 device=none
 }
 T 65100 63000 5 10 1 1 0 6 1
-refdes=U?
+refdes=U32
 N 72900 73300 74200 73300 4
 C 82300 75300 1 0 0 vcc-1.sym
 N 82500 75300 82500 74100 4
@@ -2830,16 +2854,18 @@ C 68400 57200 1 0 0 7404-1.sym
 T 69000 58100 5 10 0 0 0 0 1
 device=7404
 T 68700 58100 5 10 1 1 0 0 1
-refdes=U?
+refdes=U42
 T 69000 60700 5 10 0 0 0 0 1
 footprint=DIP14
+T 68400 57200 5 10 0 0 0 0 1
+slot=5
 }
 C 45100 36800 1 0 0 7404-1.sym
 {
 T 45700 37700 5 10 0 0 0 0 1
 device=7404
 T 45400 37700 5 10 1 1 0 0 1
-refdes=U?
+refdes=U42
 T 45700 40300 5 10 0 0 0 0 1
 footprint=DIP14
 }
@@ -2848,43 +2874,53 @@ C 47600 36800 1 0 0 7404-1.sym
 T 48200 37700 5 10 0 0 0 0 1
 device=7404
 T 47900 37700 5 10 1 1 0 0 1
-refdes=U?
+refdes=U42
 T 48200 40300 5 10 0 0 0 0 1
 footprint=DIP14
+T 47600 36800 5 10 0 0 0 0 1
+slot=2
 }
 C 45100 38100 1 0 0 resistor-2.sym
 {
 T 45500 38450 5 10 0 0 0 0 1
 device=RESISTOR
 T 45300 38400 5 10 1 1 0 0 1
-refdes=R?
+refdes=R3
+T 45100 38100 5 10 0 0 0 0 1
+footprint=res300
 }
 C 45200 36100 1 0 0 crystal-1.sym
 {
 T 45400 36600 5 10 0 0 0 0 1
 device=CRYSTAL
 T 45400 36400 5 10 1 1 0 0 1
-refdes=U?
+refdes=U36
 T 45400 36800 5 10 0 0 0 0 1
 symversion=0.1
+T 45200 36100 5 10 0 0 0 0 1
+footprint=HC49
 }
 C 47200 35200 1 90 0 capacitor-1.sym
 {
 T 46500 35400 5 10 0 0 90 0 1
 device=CAPACITOR
 T 46700 35400 5 10 1 1 90 0 1
-refdes=C?
+refdes=C6
 T 46300 35400 5 10 0 0 90 0 1
 symversion=0.1
+T 47200 35200 5 10 0 0 0 0 1
+footprint=0805
 }
 C 44300 35200 1 90 0 capacitor-1.sym
 {
 T 43600 35400 5 10 0 0 90 0 1
 device=CAPACITOR
 T 43800 35400 5 10 1 1 90 0 1
-refdes=C?
+refdes=C7
 T 43400 35400 5 10 0 0 90 0 1
 symversion=0.1
+T 44300 35200 5 10 0 0 0 0 1
+footprint=0805
 }
 C 46900 34400 1 0 0 gnd-1.sym
 C 44000 34400 1 0 0 gnd-1.sym
@@ -2900,59 +2936,71 @@ N 45100 37300 44100 37300 4
 C 51000 60700 1 0 0 TLV1117_SOT-223.sym
 {
 T 53600 62300 5 10 0 0 0 0 1
-footprint=sot223-4
+footprint=SOT223
 T 53000 62200 5 10 1 1 0 3 1
 device=TLV1117xDCY
 T 51400 62200 5 10 1 1 0 3 1
-refdes=U?
+refdes=U37
 }
 C 48900 61100 1 270 0 capacitor-2.sym
 {
 T 49600 60900 5 10 0 0 270 0 1
 device=POLARIZED_CAPACITOR
 T 49400 60900 5 10 1 1 270 0 1
-refdes=C?
+refdes=C8
 T 49800 60900 5 10 0 0 270 0 1
 symversion=0.1
+T 48900 61100 5 10 0 0 0 0 1
+footprint=RADIAL_CAN 200
 }
 C 52900 63600 1 180 0 diode-1.sym
 {
 T 52500 63000 5 10 0 0 180 0 1
 device=DIODE
 T 52600 63100 5 10 1 1 180 0 1
-refdes=D?
+refdes=D1
+T 52900 63600 5 10 0 0 0 0 1
+footprint=res300
 }
 C 52700 59500 1 90 0 capacitor-1.sym
 {
 T 52000 59700 5 10 0 0 90 0 1
 device=CAPACITOR
 T 52200 59700 5 10 1 1 90 0 1
-refdes=C?
+refdes=C9
 T 51800 59700 5 10 0 0 90 0 1
 symversion=0.1
+T 52700 59500 5 10 0 0 0 0 1
+footprint=0805
 }
 C 54700 60300 1 90 0 resistor-2.sym
 {
 T 54350 60700 5 10 0 0 90 0 1
 device=RESISTOR
 T 54400 60500 5 10 1 1 90 0 1
-refdes=R?
+refdes=R4
+T 54700 60300 5 10 0 0 0 0 1
+footprint=res300
 }
 C 54700 58900 1 90 0 resistor-2.sym
 {
 T 54350 59300 5 10 0 0 90 0 1
 device=RESISTOR
 T 54400 59100 5 10 1 1 90 0 1
-refdes=R?
+refdes=R5
+T 54700 58900 5 10 0 0 0 0 1
+footprint=res300
 }
 C 55300 60700 1 270 0 capacitor-2.sym
 {
 T 56000 60500 5 10 0 0 270 0 1
 device=POLARIZED_CAPACITOR
 T 55800 60500 5 10 1 1 270 0 1
-refdes=C?
+refdes=C10
 T 56200 60500 5 10 0 0 270 0 1
 symversion=0.1
+T 55300 60700 5 10 0 0 0 0 1
+footprint=RADIAL_CAN 200
 }
 C 52400 58500 1 0 0 gnd-1.sym
 C 49000 58400 1 0 0 gnd-1.sym
@@ -2986,27 +3034,33 @@ C 73700 36200 1 180 0 7404-1.sym
 T 73100 35300 5 10 0 0 180 0 1
 device=7404
 T 73400 35300 5 10 1 1 180 0 1
-refdes=U?
+refdes=U42
 T 73100 32700 5 10 0 0 180 0 1
 footprint=DIP14
+T 73700 36200 5 10 0 0 0 0 1
+slot=4
 }
 C 71700 36200 1 180 0 7404-1.sym
 {
 T 71100 35300 5 10 0 0 180 0 1
 device=7404
 T 71400 35300 5 10 1 1 180 0 1
-refdes=U?
+refdes=U42
 T 71100 32700 5 10 0 0 180 0 1
 footprint=DIP14
+T 71700 36200 5 10 0 0 0 0 1
+slot=3
 }
 C 74600 34200 1 90 0 capacitor-1.sym
 {
 T 73900 34400 5 10 0 0 90 0 1
 device=CAPACITOR
 T 74100 34400 5 10 1 1 90 0 1
-refdes=C?
+refdes=C11
 T 73700 34400 5 10 0 0 90 0 1
 symversion=0.1
+T 74600 34200 5 10 0 0 0 0 1
+footprint=0805
 }
 C 74300 32600 1 0 0 gnd-1.sym
 C 74500 36100 1 90 0 resistor-2.sym
@@ -3014,7 +3068,9 @@ C 74500 36100 1 90 0 resistor-2.sym
 T 74150 36500 5 10 0 0 90 0 1
 device=RESISTOR
 T 74200 36300 5 10 1 1 90 0 1
-refdes=R?
+refdes=R6
+T 74500 36100 5 10 0 0 0 0 1
+footprint=res300
 }
 C 74600 37500 1 0 1 vcc-1.sym
 N 71700 35700 72600 35700 4
@@ -3047,7 +3103,7 @@ C 52400 34600 1 0 0 74153-1.sym
 T 52700 38850 5 10 0 0 0 0 1
 device=74153
 T 54100 38700 5 10 1 1 0 6 1
-refdes=U?
+refdes=U40
 T 52700 39050 5 10 0 0 0 0 1
 footprint=DIP16
 }
@@ -3061,9 +3117,11 @@ C 57700 54700 1 270 0 capacitor-1.sym
 T 58400 54500 5 10 0 0 270 0 1
 device=CAPACITOR
 T 58200 54500 5 10 1 1 270 0 1
-refdes=C?
+refdes=C12
 T 58600 54500 5 10 0 0 270 0 1
 symversion=0.1
+T 57700 54700 5 10 0 0 0 0 1
+footprint=0805
 }
 N 48700 37300 52400 37300 4
 C 50500 34000 1 0 0 gnd-1.sym
@@ -3198,14 +3256,18 @@ C 51500 33800 1 90 0 resistor-2.sym
 T 51150 34200 5 10 0 0 90 0 1
 device=RESISTOR
 T 51200 34000 5 10 1 1 90 0 1
-refdes=R?
+refdes=R7
+T 51500 33800 5 10 0 0 0 0 1
+footprint=res300
 }
 C 52100 33800 1 90 0 resistor-2.sym
 {
 T 51750 34200 5 10 0 0 90 0 1
 device=RESISTOR
 T 51800 34000 5 10 1 1 90 0 1
-refdes=R?
+refdes=R8
+T 52100 33800 5 10 0 0 0 0 1
+footprint=res300
 }
 N 52000 34700 52000 38300 4
 N 51400 34700 51400 38000 4
@@ -3213,3 +3275,63 @@ C 51300 33300 1 0 0 gnd-1.sym
 C 51900 33300 1 0 0 gnd-1.sym
 N 51400 33800 51400 33600 4
 N 52000 33600 52000 33800 4
+C 55900 51400 1 270 0 capacitor-2.sym
+{
+T 56600 51200 5 10 0 0 270 0 1
+device=POLARIZED_CAPACITOR
+T 56400 51200 5 10 1 1 270 0 1
+refdes=C13
+T 56800 51200 5 10 0 0 270 0 1
+symversion=0.1
+T 55900 51400 5 10 0 0 0 0 1
+footprint=RADIAL_CAN 200
+}
+C 54900 51400 1 270 0 capacitor-2.sym
+{
+T 55600 51200 5 10 0 0 270 0 1
+device=POLARIZED_CAPACITOR
+T 55400 51200 5 10 1 1 270 0 1
+refdes=C14
+T 55800 51200 5 10 0 0 270 0 1
+symversion=0.1
+T 54900 51400 5 10 0 0 0 0 1
+footprint=RADIAL_CAN 200
+}
+C 54200 51400 1 270 0 capacitor-2.sym
+{
+T 54900 51200 5 10 0 0 270 0 1
+device=POLARIZED_CAPACITOR
+T 54700 51200 5 10 1 1 270 0 1
+refdes=C15
+T 55100 51200 5 10 0 0 270 0 1
+symversion=0.1
+T 54200 51400 5 10 0 0 0 0 1
+footprint=RADIAL_CAN 200
+}
+C 55000 49700 1 0 0 gnd-1.sym
+C 54900 52000 1 0 0 vcc-1.sym
+N 54400 51400 54400 51700 4
+N 54400 51700 56100 51700 4
+N 56100 51700 56100 51400 4
+N 55100 51400 55100 51700 4
+N 55100 52000 55100 51700 4
+N 54400 50500 54400 50200 4
+N 54400 50200 55100 50200 4
+N 55100 50000 55100 50500 4
+N 55100 50200 56100 50200 4
+N 56100 50200 56100 50500 4
+C 75100 34900 1 270 0 capacitor-2.sym
+{
+T 75800 34700 5 10 0 0 270 0 1
+device=POLARIZED_CAPACITOR
+T 75600 34700 5 10 1 1 270 0 1
+refdes=C16
+T 76000 34700 5 10 0 0 270 0 1
+symversion=0.1
+T 75100 34900 5 10 0 0 0 0 1
+footprint=RADIAL_CAN 200
+}
+N 74400 33400 75300 33400 4
+N 75300 33400 75300 34000 4
+N 75300 34900 75300 35700 4
+N 75300 35700 74400 35700 4
