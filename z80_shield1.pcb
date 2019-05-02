@@ -1203,7 +1203,7 @@ Element["" "RADIAL_CAN-200" "C13" "unknown" 1170.00mil 3800.00mil 185.00mil -29.
 
 	)
 
-Element["selected" "0805" "C12" "unknown" 64.8861mm 2600.00mil 0.1034mm -2.6169mm 0 100 ""]
+Element["" "0805" "C12" "unknown" 64.8861mm 2600.00mil 0.1034mm -2.6169mm 0 100 ""]
 (
 	Pad[35.43mil -3.93mil 35.43mil 3.93mil 51.18mil 20.00mil 57.18mil "1" "1" "square"]
 	Pad[-35.43mil -3.93mil -35.43mil 3.93mil 51.18mil 20.00mil 57.18mil "2" "2" "square"]
@@ -1390,7 +1390,7 @@ Element["" "res300" "R7" "unknown" 360.00mil 940.00mil -0.7800mm -10.3186mm 0 10
 
 	)
 
-Element["selected" "0805" "C5" "unknown" 60.0601mm 160.00mil -2.36mil -131.50mil 0 100 ""]
+Element["" "0805" "C5" "unknown" 60.0601mm 160.00mil -2.36mil -131.50mil 0 100 ""]
 (
 	Pad[-35.43mil -3.93mil -35.43mil 3.93mil 51.18mil 20.00mil 57.18mil "1" "1" "square"]
 	Pad[35.43mil -3.93mil 35.43mil 3.93mil 51.18mil 20.00mil 57.18mil "2" "2" "square"]
@@ -1477,7 +1477,7 @@ Element["" "DIP14" "U42" "unknown" 34.1080mm 14.2940mm -0.7640mm -3.1392mm 0 100
 
 	)
 
-Element["selected" "0805" "C4" "unknown" 645.43mil 1620.00mil -33.79mil -112.50mil 0 100 ""]
+Element["" "0805" "C4" "unknown" 645.43mil 1620.00mil -33.79mil -112.50mil 0 100 ""]
 (
 	Pad[35.43mil -3.93mil 35.43mil 3.93mil 51.18mil 20.00mil 57.18mil "1" "1" "square"]
 	Pad[-35.43mil -3.93mil -35.43mil 3.93mil 51.18mil 20.00mil 57.18mil "2" "2" "square"]
@@ -1486,7 +1486,7 @@ Element["selected" "0805" "C4" "unknown" 645.43mil 1620.00mil -33.79mil -112.50m
 
 	)
 
-Element["selected" "0805" "C9" "unknown" 4690.00mil 30.8501mm -2.5598mm -3.6462mm 0 100 ""]
+Element["" "0805" "C9" "unknown" 4690.00mil 30.8501mm -2.5598mm -3.6462mm 0 100 ""]
 (
 	Pad[-3.93mil -35.43mil 3.93mil -35.43mil 51.18mil 20.00mil 57.18mil "1" "1" "square"]
 	Pad[-3.93mil 35.43mil 3.93mil 35.43mil 51.18mil 20.00mil 57.18mil "2" "2" "square"]
@@ -1495,7 +1495,7 @@ Element["selected" "0805" "C9" "unknown" 4690.00mil 30.8501mm -2.5598mm -3.6462m
 
 	)
 
-Element["selected" "0805" "C1" "unknown" 144.4099mm 25.4218mm -1.1002mm -2.9601mm 0 100 ""]
+Element["" "0805" "C1" "unknown" 144.4099mm 25.4218mm -1.1002mm -2.9601mm 0 100 ""]
 (
 	Pad[-35.43mil -3.93mil -35.43mil 3.93mil 51.18mil 20.00mil 57.18mil "1" "1" "square"]
 	Pad[35.43mil -3.93mil 35.43mil 3.93mil 51.18mil 20.00mil 57.18mil "2" "2" "square"]
@@ -1598,7 +1598,7 @@ Element["" "RADIAL_CAN-200" "C10" "unknown" 4783.00mil 1430.00mil -0.2144mm 2.57
 
 	)
 
-Element["selected" "0805" "C3" "unknown" 150.7599mm 1120.00mil -31.50mil -131.50mil 0 100 ""]
+Element["" "0805" "C3" "unknown" 150.7599mm 1120.00mil -31.50mil -131.50mil 0 100 ""]
 (
 	Pad[-35.43mil -3.93mil -35.43mil 3.93mil 51.18mil 20.00mil 57.18mil "1" "1" "square"]
 	Pad[35.43mil -3.93mil 35.43mil 3.93mil 51.18mil 20.00mil 57.18mil "2" "2" "square"]
@@ -1639,7 +1639,7 @@ Element["" "ic-soic-16-n" "U14" "unknown" 149.6249mm 36.7000mm -8.0565mm 2.6469m
 
 	)
 
-Element["selected" "0805" "C11" "unknown" 46.3659mm 890.00mil -1.2646mm -97.50mil 0 100 ""]
+Element["" "0805" "C11" "unknown" 46.3659mm 890.00mil -1.2646mm -97.50mil 0 100 ""]
 (
 	Pad[35.43mil -3.93mil 35.43mil 3.93mil 51.18mil 20.00mil 57.18mil "1" "1" "square"]
 	Pad[-35.43mil -3.93mil -35.43mil 3.93mil 51.18mil 20.00mil 57.18mil "2" "2" "square"]
@@ -1648,7 +1648,7 @@ Element["selected" "0805" "C11" "unknown" 46.3659mm 890.00mil -1.2646mm -97.50mi
 
 	)
 
-Element["selected" "0805" "C6" "unknown" 1160.00mil 915.43mil -27.36mil 74.07mil 0 100 ""]
+Element["" "0805" "C6" "unknown" 1160.00mil 915.43mil -27.36mil 74.07mil 0 100 ""]
 (
 	Pad[-3.93mil 35.43mil 3.93mil 35.43mil 51.18mil 20.00mil 57.18mil "1" "1" "square"]
 	Pad[-3.93mil -35.43mil 3.93mil -35.43mil 51.18mil 20.00mil 57.18mil "2" "2" "square"]
@@ -1657,7 +1657,7 @@ Element["selected" "0805" "C6" "unknown" 1160.00mil 915.43mil -27.36mil 74.07mil
 
 	)
 
-Element["selected" "0805" "C7" "unknown" 1160.00mil 404.57mil 61.93mil -61.07mil 0 100 ""]
+Element["" "0805" "C7" "unknown" 1160.00mil 404.57mil 61.93mil -61.07mil 0 100 ""]
 (
 	Pad[-3.93mil 35.43mil 3.93mil 35.43mil 51.18mil 20.00mil 57.18mil "1" "1" "square"]
 	Pad[-3.93mil -35.43mil 3.93mil -35.43mil 51.18mil 20.00mil 57.18mil "2" "2" "square"]
@@ -1666,7 +1666,7 @@ Element["selected" "0805" "C7" "unknown" 1160.00mil 404.57mil 61.93mil -61.07mil
 
 	)
 
-Element["selected" "0805" "C2" "unknown" 78.6021mm 2590.00mil -2.3023mm -121.50mil 0 100 ""]
+Element["" "0805" "C2" "unknown" 78.6021mm 2590.00mil -2.3023mm -121.50mil 0 100 ""]
 (
 	Pad[35.43mil -3.93mil 35.43mil 3.93mil 51.18mil 20.00mil 57.18mil "1" "1" "square"]
 	Pad[-35.43mil -3.93mil -35.43mil 3.93mil 51.18mil 20.00mil 57.18mil "2" "2" "square"]
@@ -3885,6 +3885,12 @@ Layer(1 "top")
 	Line[3497.00mil 555.00mil 3530.00mil 522.00mil 10.00mil 20.00mil "clearline"]
 	Line[74.1392mm 579.00mil 3461.00mil 579.00mil 10.00mil 20.00mil "clearline"]
 	Line[3461.00mil 579.00mil 3502.00mil 620.00mil 10.00mil 20.00mil "clearline"]
+	Line[145.1799mm 34.0000mm 145.1799mm 32.9881mm 25.00mil 20.00mil "clearline"]
+	Line[145.1799mm 32.9881mm 5696.00mil 1279.00mil 25.00mil 20.00mil "clearline"]
+	Line[5696.00mil 1279.00mil 5484.00mil 1279.00mil 25.00mil 20.00mil "clearline"]
+	Line[5484.00mil 1279.00mil 5418.00mil 1345.00mil 25.00mil 20.00mil "clearline"]
+	Line[5418.00mil 1345.00mil 5418.00mil 1410.00mil 25.00mil 20.00mil "clearline"]
+	Line[5418.00mil 1410.00mil 137.7016mm 35.8984mm 25.00mil 20.00mil "clearline"]
 )
 Layer(2 "ground")
 (
@@ -4786,8 +4792,8 @@ Layer(10 "silk")
 	Text[4776.00mil 3534.00mil 0 100 "CTC IO" "clearline"]
 	Text[5925.00mil 2650.00mil 0 100 "AUXIO" "clearline"]
 	Text[4740.00mil 2620.00mil 0 100 "Z80 Arduino Shield" "clearline"]
-	Text[4743.00mil 2692.00mil 0 100 "V1.0" "clearline"]
 	Text[4749.00mil 2759.00mil 0 100 "2019" "clearline"]
+	Text[4755.00mil 2691.00mil 0 100 "V1.1" "clearline"]
 )
 NetList()
 (
@@ -5498,6 +5504,7 @@ NetList()
 		Connect("U12-13")
 		Connect("U12-24")
 		Connect("U13-20")
+		Connect("U14-16")
 		Connect("U37-3")
 		Connect("U40-16")
 		Connect("U42-14")
