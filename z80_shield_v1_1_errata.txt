@@ -1,0 +1,7 @@
+Errors on V1.1 PCB
+
+1. A_RESET missing connection to mega
+2. A_CLK  missing connection to mega
+3. RD not connected to Mega
+4. BUSACK not connected to mega
+
