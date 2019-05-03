@@ -1,0 +1,16 @@
+# Z80 Shield 
+#
+# Ignore these files
+#
+
+*.gbr
+*.G*
+*.TXT
+\#*\#
+.*
+*.cmd
+*.net
+*.bak
+*.bak[0-9]
+*~
+*.cnc
