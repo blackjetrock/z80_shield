@@ -51,6 +51,38 @@ const int A_RES_Pin   = 36;
 const int SW0_Pin     = 34;
 const int SW1_Pin     = 32;
 
+const int address_pins[] =
+  {
+    A0_Pin,
+    A1_Pin,
+    A2_Pin,
+    A3_Pin,
+    A4_Pin,
+    A5_Pin,
+    A6_Pin,
+    A7_Pin,
+    A8_Pin,
+    A9_Pin,
+    A10_Pin,
+    A11_Pin,
+    A12_Pin,
+    A13_Pin,
+    A14_Pin,
+    A15_Pin,
+  };
+
+const int data_pins[] =
+  {
+    D0_Pin,
+    D1_Pin,
+    D2_Pin,
+    D3_Pin,
+    D4_Pin,
+    D5_Pin,
+    D6_Pin,
+    D7_Pin,
+  };
+
 ////////////////////////////////////////////////////////////////////////////////
 //
 // Utility functions
@@ -69,6 +101,12 @@ void de_assert_ctrl(int what)
 {
   // Always active low
   digitalWrite(what, HIGH);
+}
+
+// Reset the Z80
+void reset_z80()
+{
+  // Drive reset
 }
 
 // Do a clock cycle or T state (high then low)
@@ -186,6 +224,65 @@ void initialise_z80_for_control()
   // 
 }
 
+////////////////////////////////////////////////////////////////////////////////
+//
+// State monitoring
+//
+////////////////////////////////////////////////////////////////////////////////
+
+// Returns address bus state, ie address on bus
+
+unsigned int addr_state()
+{
+  unsigned int a = 0;
+
+  // Get all the address lines and accumulate the address
+  for(int i=15; i>=0; i++)
+    {
+      // Make room for bit
+      a <<= 1;
+
+      // Add bit in
+      switch(digitalRead(address_pins[i]))
+	{
+	case HIGH:
+	  a++;
+	  break;
+	  
+	case LOW:
+	  break;
+	}
+    }
+  
+  return(a);  
+}
+
+// Returns data bus state, ie data on bus
+
+unsigned int data_state()
+{
+  unsigned int a = 0;
+
+  // Get all the data lines and accumulate the data
+  for(int i=7; i>=0; i++)
+    {
+      // Make room for bit
+      a <<= 1;
+
+      // Add bit in
+      switch(digitalRead(data_pins[i]))
+	{
+	case HIGH:
+	  a++;
+	  break;
+	  
+	case LOW:
+	  break;
+	}
+    }
+  
+  return(a);  
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 //
@@ -193,25 +290,10 @@ void initialise_z80_for_control()
 //
 ////////////////////////////////////////////////////////////////////////////////
 
-// Example Z80 code
-
-//        LD  A, 0AAH
-// LOOP:  LD  HL, 01234H
-//        LD  (HL), A
-//        INC HL
-//        JR  LOOP
-//
-
-BYTE example_code[] =
-  {
-    0x3e, 0xaa,          // LOOP:   LD A, 03EH
-    0x21, 0x12, 0x34,    //         LD HL 01234H
-    0x77,                //         LD (HL), A
-    0x23,                //         INC HL
-    0x18, -9             //         JR LOOP
-  };
   
 // Grab the z80, ready for other actions like single stepping
+// or running test code. The inverse command is 'cmd_free_z80'
+
 void cmd_grab_z80(String cmd)
 {
   String arg;
@@ -228,14 +310,88 @@ void cmd_grab_z80(String cmd)
 
 ////////////////////////////////////////////////////////////////////////////////
 //
+// Free the Z80
+//
+// Set the Mega IO so that the board can run code from flash and RAM using it's
+// own clock and reset (reset may have to still be Mega)
+//
+////////////////////////////////////////////////////////////////////////////////
+
+void cmd_free_z80()
+{
+}
+
+  
+void cmd_dump_signals()
+{
+  unsigned int address;
+  BYTE     data;
+  
+  Serial.println("Z80 State");  
+
+  // Address bus
+  address = addr_state();
+  // Data bus
+  data = data_state();
+    
+  Serial.print("Addr:");  
+  Serial.print(address, HEX);
+  Serial.print("  Data:");
+  
+  // Control signals on bus
+  
+}
+
+////////////////////////////////////////////////////////////////////////////////
+//
 // Runs the short piece of test Z80 code under full Mega control. This means
 // that the Z80 code does not run from the RAM or flash chip on the board, but
 // comes from the Mega
 ////////////////////////////////////////////////////////////////////////////////
 
+// Test Z80 code
+
+BYTE example_code[] =
+  {
+    0x3e, 0xaa,          // LOOP:   LD A, 03EH
+    0x21, 0x12, 0x34,    //         LD HL 01234H
+    0x77,                //         LD (HL), A
+    0x23,                //         INC HL
+    0x18, -9             //         JR LOOP
+  };
+
+
+// In this mode the Mega is essentially a slave of the Z80. We provide the clock and reset signals
+// But we have to minitor bus signals to see what the Z80 wants to do. We emulate an address space
+// starting at 0000H using the test code array above
+// We could emulate RAM too, and that would start at 8000H, as th ereal board does.
+//
+// A keystroke allows the single stepping to proceed, or other actiosn to be
+// issued, such as register dumps
+
 void cmd_run_test_code()
 {
+  boolean running = true;
+  
+  // We have a logical address space for the array of code such that the code starts at
+  // 0000H, which is the reset vector
 
+  // reset Z80
+  reset_z80();
+
+  // Clock and monitor the bus signals to work out what to do
+  while( running )
+    {
+      // Clock the Z80 to move it on
+      t_state();
+
+      // Dump the status so we can see what's happening
+      cmd_dump_signals();
+      
+      // Now check for things we have to do
+      // It could be an M1 cycle
+      
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -244,16 +400,21 @@ void cmd_run_test_code()
 //
 ////////////////////////////////////////////////////////////////////////////////
 
-const int NUM_CMDS = 2;  
+// Null cmd function
+void cmd_dummy()
+{
+}
+
 String cmd;
 struct
 {
   String cmdname;
   CMD_FPTR   handler;
-} cmdlist [NUM_CMDS] =
+} cmdlist [] =
   {
     {"g",         cmd_grab_z80},
     {"t",         cmd_run_test_code},
+    {"---",       cmd_dummy},
   };
 
 // Interaction with the Mega from the host PC is through a 'monitor' command line type interface.
@@ -274,8 +435,13 @@ void run_monitor()
 	case '\n':
 	  // We have a command, process it
 	  Serial.println("'"+cmd+"'");  
-	  for(i=0; i<NUM_CMDS; i++)
+	  for(i=0;; i++)
 	    {
+	      if ( cmdlist[i].cmdname == "---" )
+		{
+		  break;
+		}
+		
 	      test = cmd.substring(0, (cmdlist[i].cmdname).length());
 	      Serial.println("'"+test+"'");
 	      if( test == cmdlist[i].cmdname )
