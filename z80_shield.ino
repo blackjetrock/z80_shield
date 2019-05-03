@@ -155,12 +155,10 @@ void half_t_state()
   if ( clk )
     {
       digitalWrite(A_CLK_Pin, HIGH);
-      Serial.println("H");
     }
   else
     {
       digitalWrite(A_CLK_Pin, LOW);
-      Serial.println("L");
     }
   
   clk = !clk;
@@ -365,13 +363,17 @@ struct
       {  "    WR", WR_Pin,     {{MODE_SLAVE, INPUT, HIGH}}},
       {  "    RD", RD_Pin,     {{MODE_SLAVE, INPUT, HIGH}}},
       {  "    M1", M1_Pin,     {{MODE_SLAVE, INPUT, HIGH}}},
-      { "   NMI", NMI_Pin,     {{MODE_SLAVE, OUTPUT, HIGH}}},
-      { "   INT", INT_Pin,     {{MODE_SLAVE, OUTPUT, HIGH}}},
-      { "  WAIT", WAIT_Pin,    {{MODE_SLAVE, OUTPUT, HIGH}}},
-      { "   CLK", A_CLK_Pin,   {{MODE_SLAVE, OUTPUT, HIGH}}},
-      { "   RES", A_RES_Pin,   {{MODE_SLAVE, OUTPUT, HIGH}}},
+      {  "   NMI", NMI_Pin,    {{MODE_SLAVE, OUTPUT, HIGH}}},
+      {  "   INT", INT_Pin,    {{MODE_SLAVE, OUTPUT, HIGH}}},
+      {  "  WAIT", WAIT_Pin,   {{MODE_SLAVE, OUTPUT, HIGH}}},
+      {  "   CLK", A_CLK_Pin,  {{MODE_SLAVE, OUTPUT, HIGH}}},
+      {  "   RES", A_RES_Pin,  {{MODE_SLAVE, OUTPUT, HIGH}}},
       {  "---",    0,          {{MODE_SLAVE, INPUT, HIGH}}},
     };
+
+void signal_state(int signal)
+{
+}
   
 void dump_misc_signals()
 {
@@ -629,9 +631,11 @@ void cmd_run_test_code()
       // Now check for things we have to do
       // We really only need respond to memory read/write and IO read/write
       
-
+      if (signal_state(WR_Pin) == LOW)
+	{
+	  
+	}
     }
-
 }
 
 ////////////////////////////////////////////////////////////////////////////////
