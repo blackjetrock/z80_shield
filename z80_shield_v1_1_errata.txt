@@ -11,4 +11,6 @@ Fixed above on V1.2 PCB
 5 NMI needs pullup  for stand alone operation
 
 
+4,5 fixed in V1.2
+
 
