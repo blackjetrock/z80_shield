@@ -85,11 +85,46 @@ const int data_pins[] =
     D7_Pin,
   };
 
+// Z80 modes
+enum {
+  MODE_SLAVE,
+  NUM_MODES,
+};
+
+
+////////////////////////////////////////////////////////////////////////////////
+//
+// general utility functions
+//
+////////////////////////////////////////////////////////////////////////////////
+
+// Has leading zero support
+char hexbuf[5];
+
+char *to_hex(int value, int numdig)
+{
+  switch(numdig)
+    {
+    case 4:
+      snprintf(hexbuf, sizeof(hexbuf), "%04X", value);
+      break;
+    case 2:
+      snprintf(hexbuf, sizeof(hexbuf), "%02X", value);
+      break;
+    default:
+      snprintf(hexbuf, sizeof(hexbuf), "%04X", value);
+      break;
+    }
+  
+  return(hexbuf);
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 //
 // Utility functions
 //
 ////////////////////////////////////////////////////////////////////////////////
+
 
 // Assert a control line
 void assert_ctrl(int what)
@@ -111,13 +146,33 @@ void reset_z80()
   // Drive reset
 }
 
+// Do a half t state
+int clk = 0;
+
+void half_t_state()
+{
+
+  if ( clk )
+    {
+      digitalWrite(A_CLK_Pin, HIGH);
+      Serial.println("H");
+    }
+  else
+    {
+      digitalWrite(A_CLK_Pin, LOW);
+      Serial.println("L");
+    }
+  
+  clk = !clk;
+}
+
 // Do a clock cycle or T state (high then low)
 //
 
 void t_state()
 {
-  digitalWrite(A_CLK_Pin, HIGH);
-  digitalWrite(A_CLK_Pin, LOW);
+  half_t_state();
+  half_t_state();
 }
 
 // Request and get the bus
@@ -219,9 +274,9 @@ void initialise_z80_for_control()
 
   // We leave data bus alone for now
   data_bus_inputs();
-  
 
-  pinMode ( BUSACK_Pin, INPUT );
+  // Control signals in slave mode
+  set_signals_to_mode(MODE_SLAVE);
 
   // 
 }
@@ -290,18 +345,32 @@ unsigned int data_state()
 // Function that dumps a set of control signals, in a compact form
 // The signals to dump are defined in an array
 
+
 struct
 {
   String signame;
   const int pin;
+  struct
+  {
+    int     mode;        // Mode
+    uint8_t mode_dir;    // The direction we set this line when in this mode
+    uint8_t mode_val;    // Default value for this mode
+  } modes[1];
 }
   signal_list[] =
     {
-      {"BUSACK", BUSACK_Pin},
-      {"  MREQ", MREQ_Pin},
-      {"    WR", WR_Pin},
-      {"    RD", RD_Pin},
-      {"---",    0},
+      {  "BUSACK", BUSACK_Pin, {{MODE_SLAVE, INPUT, HIGH}}},
+      {  "  MREQ", MREQ_Pin,   {{MODE_SLAVE, INPUT, HIGH}}},
+      {  " IOREQ", IOREQ_Pin,  {{MODE_SLAVE, INPUT, HIGH}}},
+      {  "    WR", WR_Pin,     {{MODE_SLAVE, INPUT, HIGH}}},
+      {  "    RD", RD_Pin,     {{MODE_SLAVE, INPUT, HIGH}}},
+      {  "    M1", M1_Pin,     {{MODE_SLAVE, INPUT, HIGH}}},
+      { "   NMI", NMI_Pin,     {{MODE_SLAVE, OUTPUT, HIGH}}},
+      { "   INT", INT_Pin,     {{MODE_SLAVE, OUTPUT, HIGH}}},
+      { "  WAIT", WAIT_Pin,    {{MODE_SLAVE, OUTPUT, HIGH}}},
+      { "   CLK", A_CLK_Pin,   {{MODE_SLAVE, OUTPUT, HIGH}}},
+      { "   RES", A_RES_Pin,   {{MODE_SLAVE, OUTPUT, HIGH}}},
+      {  "---",    0,          {{MODE_SLAVE, INPUT, HIGH}}},
     };
   
 void dump_misc_signals()
@@ -379,6 +448,39 @@ void dump_misc_signals()
     }
 }
 
+//
+// Sets the signals in the signal list to one of the modes it supports.
+//
+void set_signals_to_mode(int mode)
+{
+  for(int i=0;;i++)
+    {
+      if ( signal_list[i].signame == "---" )
+	{
+	  // Done
+	  break;
+	}
+
+      for(int m=0; m<NUM_MODES; m++)
+	{
+	  
+	  if ( signal_list[i].modes[m].mode != mode )
+	    {
+	      continue;
+	    }
+	  
+	  // Set this pin direction up
+	  pinMode(signal_list[i].pin, signal_list[i].modes[m].mode_dir);
+
+	  // Write default value if output
+	  if ( signal_list[i].modes[m].mode_dir == OUTPUT )
+	    {
+	      digitalWrite(signal_list[i].pin, signal_list[i].modes[m].mode_val);
+	    }
+	}
+      
+    }
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 //
@@ -421,7 +523,7 @@ void cmd_free_z80()
 void cmd_dump_signals()
 {
   unsigned int address;
-  BYTE     data;
+  unsigned int data;
 
   
   Serial.println("");
@@ -434,10 +536,10 @@ void cmd_dump_signals()
   data = data_state();
     
   Serial.print("Addr:");  
-  Serial.print(address, HEX);
+  Serial.print(to_hex(address, 4));
   Serial.print("  Data:");
-  Serial.print(data, HEX);
-  Serial.println("x");
+  Serial.print(to_hex(data, 2));
+  Serial.println("");
   
   // Control signals on bus
   dump_misc_signals();
@@ -471,9 +573,19 @@ BYTE example_code[] =
 // A keystroke allows the single stepping to proceed, or other actiosn to be
 // issued, such as register dumps
 
+enum {
+  STATE_NONE,
+  STATE_MEM_RD,
+  STATE_MEM_WR,
+  STATE_IO_RD,
+  STATE_IO_WR,
+  STATE_INT_ACK,
+};
+
 void cmd_run_test_code()
 {
   boolean running = true;
+  int state = STATE_NONE;
   
   // We have a logical address space for the array of code such that the code starts at
   // 0000H, which is the reset vector
@@ -484,14 +596,13 @@ void cmd_run_test_code()
   // Clock and monitor the bus signals to work out what to do
   while( running )
     {
-      // Clock the Z80 to move it on
-      t_state();
+      // Half t states so we can examine all clock transitions
+      half_t_state();
 
       // Dump the status so we can see what's happening
       cmd_dump_signals();
-      
-      // Now check for things we have to do
-      // It could be an M1 cycle
+
+      // Allow interaction
       Serial.println(" (return:next q:quit d:dump regs)");
       
       while ( !Serial.available())
@@ -514,6 +625,11 @@ void cmd_run_test_code()
 	      break;
 	    }
 	}
+      
+      // Now check for things we have to do
+      // We really only need respond to memory read/write and IO read/write
+      
+
     }
 
 }
@@ -605,6 +721,15 @@ void setup()
   pinMode(SW0_Pin, OUTPUT);
   pinMode(SW1_Pin, OUTPUT);
 
+  pinMode(NMI_Pin, OUTPUT);
+  digitalWrite(NMI_Pin, 1);
+
+  pinMode(NMI_Pin, OUTPUT);
+  digitalWrite(NMI_Pin, 1);
+  
+  pinMode(A_CLK_Pin, OUTPUT);
+  pinMode(A_RES_Pin, OUTPUT);
+  
   // Select Mega control of reset and clock
   digitalWrite(SW0_Pin, HIGH);
   digitalWrite(SW1_Pin, LOW);

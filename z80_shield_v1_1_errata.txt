@@ -1,8 +1,14 @@
 Errors on V1.1 PCB
 
-3. SW0 and SW1 should go to MEGA so we can write to PIO
-4  A_CLK should go to mega
-5  A_RESET should go to mega
+1. SW0 and SW1 should go to MEGA so we can write to PIO
+2  A_CLK should go to mega
+3  A_RESET should go to mega
 
 Fixed above on V1.2 PCB
+
+
+4 INT needs pullup for stand alone operation
+5 NMI needs pullup  for stand alone operation
+
+
 
