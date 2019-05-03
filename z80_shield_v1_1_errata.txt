@@ -4,3 +4,5 @@ Errors on V1.1 PCB
 4  A_CLK should go to mega
 5  A_RESET should go to mega
 
+Fixed above on V1.2 PCB
+
