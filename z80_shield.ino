@@ -3,6 +3,8 @@
 // Serial monitor based control program
 //
 
+#define VERTICAL_LABELS  0
+
 typedef unsigned char BYTE;
 typedef void (*FPTR)();
 typedef void (*CMD_FPTR)(String cmd);
@@ -237,7 +239,7 @@ unsigned int addr_state()
   unsigned int a = 0;
 
   // Get all the address lines and accumulate the address
-  for(int i=15; i>=0; i++)
+  for(int i=15; i>=0; i--)
     {
       // Make room for bit
       a <<= 1;
@@ -264,7 +266,7 @@ unsigned int data_state()
   unsigned int a = 0;
 
   // Get all the data lines and accumulate the data
-  for(int i=7; i>=0; i++)
+  for(int i=7; i>=0; i--)
     {
       // Make room for bit
       a <<= 1;
@@ -283,6 +285,100 @@ unsigned int data_state()
   
   return(a);  
 }
+
+
+// Function that dumps a set of control signals, in a compact form
+// The signals to dump are defined in an array
+
+struct
+{
+  String signame;
+  const int pin;
+}
+  signal_list[] =
+    {
+      {"BUSACK", BUSACK_Pin},
+      {"  MREQ", MREQ_Pin},
+      {"    WR", WR_Pin},
+      {"    RD", RD_Pin},
+      {"---",    0},
+    };
+  
+void dump_misc_signals()
+{
+  if (VERTICAL_LABELS)
+    {
+      // Length of any name will do, they should all be the same
+      int numlines = signal_list[0].signame.length();
+      
+      // Display labels in vertical form
+      for(int l=0;l<numlines;l++)
+	{
+	  
+	  for(int i=0;;i++)
+	    {
+	      if ( signal_list[i].signame == "---" )
+		{
+		  // Done
+		  break;
+		}
+	      Serial.print(" ");	  
+	      Serial.print( signal_list[i].signame.charAt(l) );
+	    }
+	  
+	  Serial.println("");
+	}
+      // Labels  printed, now display the value of the signal
+      for(int i=0;;i++)
+	{
+	  Serial.print(" ");
+	  if ( signal_list[i].signame == "---" )
+	    {
+	      // Done
+	      break;
+	    }
+	  
+	  int val = digitalRead(signal_list[i].pin );
+	  switch(val)
+	    {
+	    case HIGH:
+	      Serial.print("1");
+	      break;
+	    case LOW:
+	      Serial.print("0");
+	      break;
+	    }
+	}
+      
+      Serial.println("");
+      
+    }
+  else
+    {
+      for(int i=0;;i++)
+	{
+	  if ( signal_list[i].signame == "---" )
+	    {
+	      // Done
+	      break;
+	    }
+	  Serial.print( signal_list[i].signame+": " );
+
+	  int val = digitalRead(signal_list[i].pin );
+	  switch(val)
+	    {
+	    case HIGH:
+	      Serial.print("1");
+	      break;
+	    case LOW:
+	      Serial.print("0");
+	      break;
+	    }
+	  Serial.println("");
+	}
+    }
+}
+
 
 ////////////////////////////////////////////////////////////////////////////////
 //
@@ -326,19 +422,25 @@ void cmd_dump_signals()
 {
   unsigned int address;
   BYTE     data;
+
   
+  Serial.println("");
   Serial.println("Z80 State");  
 
   // Address bus
   address = addr_state();
+  
   // Data bus
   data = data_state();
     
   Serial.print("Addr:");  
   Serial.print(address, HEX);
   Serial.print("  Data:");
+  Serial.print(data, HEX);
+  Serial.println("x");
   
   // Control signals on bus
+  dump_misc_signals();
   
 }
 
@@ -390,8 +492,30 @@ void cmd_run_test_code()
       
       // Now check for things we have to do
       // It could be an M1 cycle
+      Serial.println(" (return:next q:quit d:dump regs)");
       
+      while ( !Serial.available())
+	{
+	}
+
+      boolean cmdloop = true;
+      
+      while( cmdloop )
+	{
+	  switch( Serial.read())
+	    {
+	    case 'q':
+	      running = false;
+	      cmdloop = false;
+	      break;
+	      
+	    case '\r':
+	      cmdloop = false;
+	      break;
+	    }
+	}
     }
+
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -428,25 +552,27 @@ void run_monitor()
   if( Serial.available() )
     {
       c = Serial.read();
-
+      //Serial.println(c,HEX);
       switch(c)
 	{
 	case '\r':
 	case '\n':
 	  // We have a command, process it
-	  Serial.println("'"+cmd+"'");  
+	  //Serial.println("'"+cmd+"'");  
 	  for(i=0;; i++)
 	    {
 	      if ( cmdlist[i].cmdname == "---" )
 		{
+		  //Serial.println("break");
 		  break;
 		}
 		
 	      test = cmd.substring(0, (cmdlist[i].cmdname).length());
-	      Serial.println("'"+test+"'");
+	      //	      Serial.println("'"+test+"'");
 	      if( test == cmdlist[i].cmdname )
 		{
 		  (*(cmdlist[i].handler))(cmd);
+		  Serial.print("> ");
 		}
 	    }
 
@@ -468,6 +594,11 @@ void run_monitor()
 
 void setup()
 {
+  // initialize serial communication at 9600 bits per second:
+  Serial.begin(9600);
+  Serial.println("Z80 Shield Monitor");
+  Serial.println("    (Set line ending to carriage return)");
+  
   // Fixed initialisation. These data directions are fixed.
 
   // Control pins
