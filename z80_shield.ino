@@ -157,6 +157,86 @@ enum
     CYCLE_DIR_WR,
   };
 
+// Signal to function
+enum
+  {
+    EV_ASSERT,
+    EV_DEASSERT,
+  };
+
+enum 
+  {
+    EV_A_BUSREQ, EV_D_BUSREQ,
+    EV_A_BUSACK, EV_D_BUSACK,
+    EV_A_MREQ,   EV_D_MREQ,
+    EV_A_IOREQ,  EV_D_IOREQ,
+    EV_A_WR,     EV_D_WR,
+    EV_A_RD,     EV_D_RD,
+    EV_A_M1,     EV_D_M1,
+    EV_A_RFSH,   EV_D_RFSH,
+    EV_A_NMI,    EV_D_NMI,
+    EV_A_INT,    EV_D_INT,
+    EV_A_WAIT,   EV_D_WAIT,
+    EV_A_CLK,    EV_D_CLK,
+    EV_A_RES,    EV_D_RES,
+  };
+
+
+// Function that dumps a set of control signals, in a compact form
+// The signals to dump are defined in an array
+
+
+struct
+{
+  String signame;
+  const int pin;
+  int   current_state;
+  struct
+  {
+    int     mode;        // Mode
+    uint8_t mode_dir;    // The direction we set this line when in this mode
+    uint8_t mode_val;    // Default value for this mode
+  } modes[1];
+  int     assert_ev;   // Assert event
+  int     deassert_ev; // Deassert event
+}
+  
+  signal_list[] =
+    {
+      {  "BUSREQ", BUSREQ_Pin, 0, {{MODE_SLAVE, OUTPUT, HIGH}}, EV_A_BUSREQ, EV_D_BUSREQ},
+      {  "BUSACK", BUSACK_Pin, 0, {{MODE_SLAVE, INPUT, HIGH}},  EV_A_BUSACK, EV_D_BUSACK},
+      {  "  MREQ", MREQ_Pin,   0, {{MODE_SLAVE, INPUT, HIGH}},  EV_A_MREQ, EV_D_MREQ},
+      {  " IOREQ", IOREQ_Pin,  0, {{MODE_SLAVE, INPUT, HIGH}},  EV_A_IOREQ, EV_D_IOREQ},
+      {  "    WR", WR_Pin,     0, {{MODE_SLAVE, INPUT, HIGH}},  EV_A_WR, EV_D_WR},
+      {  "    RD", RD_Pin,     0, {{MODE_SLAVE, INPUT, HIGH}},  EV_A_RD, EV_D_RD},
+      {  "    M1", M1_Pin,     0, {{MODE_SLAVE, INPUT, HIGH}},  EV_A_M1, EV_D_M1},
+      {  "  RFSH", RFSH_Pin,   0, {{MODE_SLAVE, INPUT, HIGH}},  EV_A_RFSH, EV_D_RFSH},
+      {  "   NMI", NMI_Pin,    0, {{MODE_SLAVE, OUTPUT, HIGH}}, EV_A_NMI, EV_D_NMI},
+      {  "   INT", INT_Pin,    0, {{MODE_SLAVE, OUTPUT, HIGH}}, EV_A_INT, EV_D_INT},
+      {  "  WAIT", WAIT_Pin,   0, {{MODE_SLAVE, OUTPUT, HIGH}}, EV_A_WAIT, EV_D_WAIT},
+      {  "   CLK", A_CLK_Pin,  0, {{MODE_SLAVE, OUTPUT, HIGH}}, EV_A_CLK, EV_D_CLK},
+      {  "   RES", A_RES_Pin,  0, {{MODE_SLAVE, OUTPUT, HIGH}}, EV_A_RES, EV_D_RES},
+      {  "---",    0,          0, {{MODE_SLAVE, INPUT, HIGH}},  0, 0},
+    };
+
+// Indices for signals
+enum
+  {
+    SIG_BUSREQ,
+    SIG_BUSACK,
+    SIG_MREQ,
+    SIG_IOREQ,
+    SIG_WR,
+    SIG_RD,
+    SIG_M1,
+    SIG_RFSH,
+    SIG_NMI,
+    SIG_INT,
+    SIG_WAIT,
+    SIG_CLK,
+    SIG_RES,
+  };
+
 
 ////////////////////////////////////////////////////////////////////////////////
 //
@@ -192,24 +272,20 @@ char *to_hex(int value, int numdig)
 ////////////////////////////////////////////////////////////////////////////////
 
 
-// Assert a control line
-void assert_ctrl(int what)
-{
-  // Always active low
-  digitalWrite(what, LOW);
-}
-
-// De-assert a control line
-void de_assert_ctrl(int what)
-{
-  // Always active low
-  digitalWrite(what, HIGH);
-}
 
 // Reset the Z80
 void reset_z80()
 {
   // Drive reset
+  assert_signal(SIG_RES);
+
+  // Drive some clocks
+  t_state();
+  t_state();
+
+  // Release reset
+  deassert_signal(SIG_RES);
+
 }
 
 // Do a half t state
@@ -243,13 +319,13 @@ void t_state()
 void bus_request()
 {
   // Bus request low
-  assert_ctrl(BUSREQ_Pin);
+  assert_signal(SIG_BUSREQ);
   
   // We now clock until busack is low
   // Send one clock with no check
   t_state();
   
-  while(  digitalRead(BUSACK_Pin) == HIGH)
+  while(  signal_state("BUSACK") == HIGH)
     {
       t_state();
     }
@@ -331,7 +407,7 @@ void initialise_z80_for_control()
   // signals. The Z80 is now  slave of the Mega
   
   // Put processor in reset
-  assert_ctrl(A_RES_Pin);
+  assert_signal(SIG_RES);
 
   // Address bus is driven by z80
   addr_bus_inputs();
@@ -405,39 +481,48 @@ unsigned int data_state()
   return(a);  
 }
 
-
-// Function that dumps a set of control signals, in a compact form
-// The signals to dump are defined in an array
-
-
-struct
+// Sets data bus value
+void set_data_state(unsigned int x)
 {
-  String signame;
-  const int pin;
-  struct
-  {
-    int     mode;        // Mode
-    uint8_t mode_dir;    // The direction we set this line when in this mode
-    uint8_t mode_val;    // Default value for this mode
-  } modes[1];
-}
- 
-  signal_list[] =
+  unsigned int a = x;
+
+  // Get all the data lines and accumulate the data
+  for(int i=0; i<8; i++)
     {
-      {  "BUSACK", BUSACK_Pin, {{MODE_SLAVE, INPUT, HIGH}}},
-      {  "  MREQ", MREQ_Pin,   {{MODE_SLAVE, INPUT, HIGH}}},
-      {  " IOREQ", IOREQ_Pin,  {{MODE_SLAVE, INPUT, HIGH}}},
-      {  "    WR", WR_Pin,     {{MODE_SLAVE, INPUT, HIGH}}},
-      {  "    RD", RD_Pin,     {{MODE_SLAVE, INPUT, HIGH}}},
-      {  "    M1", M1_Pin,     {{MODE_SLAVE, INPUT, HIGH}}},
-      {  "  RFSH", RFSH_Pin,   {{MODE_SLAVE, INPUT, HIGH}}},
-      {  "   NMI", NMI_Pin,    {{MODE_SLAVE, OUTPUT, HIGH}}},
-      {  "   INT", INT_Pin,    {{MODE_SLAVE, OUTPUT, HIGH}}},
-      {  "  WAIT", WAIT_Pin,   {{MODE_SLAVE, OUTPUT, HIGH}}},
-      {  "   CLK", A_CLK_Pin,  {{MODE_SLAVE, OUTPUT, HIGH}}},
-      {  "   RES", A_RES_Pin,  {{MODE_SLAVE, OUTPUT, HIGH}}},
-      {  "---",    0,          {{MODE_SLAVE, INPUT, HIGH}}},
-    };
+      // Set bit up
+      switch(a & 1)
+	{
+	case 1:
+	  digitalWrite(data_pins[i], HIGH);
+	  break;
+	  
+	case 0:
+	  digitalWrite(data_pins[i], LOW);
+	  break;
+	}
+      a >>= 1;
+    }
+}
+
+
+// Signal access
+void assert_signal(int sig)
+{
+  // Always active low
+  digitalWrite(signal_list[sig].pin, LOW);
+
+  // Update current state
+  signal_list[sig].current_state = LOW;
+}
+
+void deassert_signal(int sig)
+{
+  // Always active low
+  digitalWrite(signal_list[sig].pin, HIGH);
+
+  // Update current state
+  signal_list[sig].current_state = HIGH;
+}
 
 // returns state of signal
 int signal_state(String signal)
@@ -455,6 +540,9 @@ int signal_state(String signal)
       if( signal_list[i].signame.endsWith(signal) )
 	{
 	  state = digitalRead(signal_list[i].pin);
+
+	  // Update current state
+	  signal_list[i].current_state = state;
 	}
     }
   
@@ -539,6 +627,7 @@ void dump_misc_signals()
 //
 // Sets the signals in the signal list to one of the modes it supports.
 //
+
 void set_signals_to_mode(int mode)
 {
   for(int i=0;;i++)
@@ -564,7 +653,77 @@ void set_signals_to_mode(int mode)
 	  if ( signal_list[i].modes[m].mode_dir == OUTPUT )
 	    {
 	      digitalWrite(signal_list[i].pin, signal_list[i].modes[m].mode_val);
+	      signal_list[i].current_state = signal_list[i].modes[m].mode_val;
 	    }
+	}
+      
+    }
+}
+
+//
+// Initialises the current state for signals
+//
+
+void initialise_signals()
+{
+  for(int i=0;;i++)
+    {
+      if ( signal_list[i].signame == "---" )
+	{
+	  // Done
+	  break;
+	}
+
+      signal_list[i].current_state  = digitalRead(signal_list[i].pin);
+    }
+}
+
+// Generate an event and process it
+void signal_event(int sig, int sense)
+{
+  Serial.print(signal_list[sig].signame);
+  
+  if( sense == EV_ASSERT)
+    {
+      Serial.println(" ASSERT");
+    }
+  else 
+    {
+      Serial.println(" DEASSERT");
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+//
+// generate any bus events that may have occurred
+//
+
+
+void signal_scan()
+{
+  for(int i=0;;i++)
+    {
+      if ( signal_list[i].signame == "---" )
+	{
+	  // Done
+	  break;
+	}
+
+      // If read state is different to current state then generate events
+      int state  = digitalRead(signal_list[i].pin);
+      if ( state != signal_list[i].current_state )
+	{
+	  if ( state == HIGH )
+	    {
+	      // De-asserted
+	      signal_event(i, EV_DEASSERT);
+	    }
+	  else
+	    {
+	      // Asserted
+	      signal_event(i, EV_ASSERT);
+	    }
+	  signal_list[i].current_state = state;
 	}
       
     }
@@ -649,7 +808,7 @@ BYTE example_code[] =
     0x21, 0x12, 0x34,    //         LD HL 01234H
     0x77,                //         LD (HL), A
     0x23,                //         INC HL
-    0x18, -9             //         JR LOOP
+    0xc3, 0x12, 0x34     //         JR LOOP
   };
 
 
@@ -688,12 +847,60 @@ void cmd_run_test_code()
     {
       // Half t states so we can examine all clock transitions
       half_t_state();
+      delay(10);
 
       // Dump the status so we can see what's happening
       cmd_dump_signals();
 
+      //Update events
+      signal_scan();
+
+      // Now check for things we have to do
+      // We really only need respond to memory read/write and IO read/write
+      int wr = signal_state("WR");
+      int rd = signal_state("RD");
+      int mreq = signal_state("MREQ");
+      int ioreq = signal_state("IOREQ");
+
+      if ( (rd == HIGH) )
+	{
+	  // Data bus back to inputs
+	  data_bus_inputs();
+	}
+      
+      if ( (wr == LOW) && (mreq == LOW) )
+	{
+	  cycle_dir = CYCLE_DIR_WR;
+
+	  // Write cycle
+	  if (mreq == LOW )
+	    {
+	      cycle_type = CYCLE_MEM;
+	    }
+	}
+
+      // Read cycle, put data on the bus, based on address
+      if ( (rd == LOW) && (mreq == LOW))
+	{
+	  cycle_dir = CYCLE_DIR_RD;
+
+	  // Write cycle
+	  if (mreq == LOW )
+	    {
+	      cycle_type = CYCLE_MEM;
+	    }
+
+	  // Drive data bus
+	  data_bus_outputs();
+	  set_data_state(example_code[addr_state() & 0xff]);
+	  Serial.print("Putting data on bus ");
+	  Serial.print(addr_state(), HEX);
+	  Serial.print(" ");
+	  Serial.print(example_code[addr_state() & 0xff], HEX);
+	}
+
       // Allow interaction
-      Serial.println(" (return:next q:quit d:dump regs)");
+      Serial.println(" (return:next q:quit 1:assert reset 0:deassert reset d:dump regs)");
       
       while ( !Serial.available())
 	{
@@ -705,6 +912,14 @@ void cmd_run_test_code()
 	{
 	  switch( Serial.read())
 	    {
+	    case '1':
+	      assert_signal(SIG_RES);
+	      break;
+
+	    case '0':
+	      deassert_signal(SIG_RES);
+	      break;
+
 	    case 'q':
 	      running = false;
 	      cmdloop = false;
@@ -716,41 +931,6 @@ void cmd_run_test_code()
 	    }
 	}
       
-      // Now check for things we have to do
-      // We really only need respond to memory read/write and IO read/write
-      int wr = signal_state("WR");
-      int rd = signal_state("RD");
-      int mreq = signal_state("MREQ");
-      int ioreq = signal_state("IOREQ");
-      
-      if ( wr == LOW)
-	{
-	  cycle_dir = CYCLE_DIR_WR;
-	  // Write cycle
-	  if (mreq == LOW )
-	    {
-	      cycle_type = CYCLE_MEM;
-	    }
-	  if (ioreq == LOW )
-	    {
-	      cycle_type = CYCLE_IO;
-	    }
-	  
-	}
-
-      if ( rd == LOW)
-	{
-	  cycle_dir = CYCLE_DIR_RD;
-	  // Write cycle
-	  if (mreq == LOW )
-	    {
-	      cycle_type = CYCLE_MEM;
-	    }
-	  if (ioreq == LOW )
-	    {
-	      cycle_type = CYCLE_IO;
-	    }
-	}
     }
 }
 
@@ -830,10 +1010,6 @@ void run_monitor()
 
 void setup()
 {
-  // initialize serial communication at 9600 bits per second:
-  Serial.begin(9600);
-  Serial.println("Z80 Shield Monitor");
-  Serial.println("    (Set line ending to carriage return)");
   
   // Fixed initialisation. These data directions are fixed.
 
@@ -856,6 +1032,15 @@ void setup()
 
 
   initialise_z80_for_control();
+
+  // Initialise signals
+  initialise_signals();
+
+  // initialize serial communication at 9600 bits per second:
+  Serial.begin(9600);
+  Serial.println("Z80 Shield Monitor");
+  Serial.println("    (Set line ending to carriage return)");
+
 }
 
 ////////////////////////////////////////////////////////////////////////////////
