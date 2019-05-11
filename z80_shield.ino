@@ -10,6 +10,9 @@ typedef void (*FPTR)();
 typedef void (*CMD_FPTR)(String cmd);
 
 // Pin definitions
+
+#if 0
+
 const int D0_Pin      = 2;
 const int D1_Pin      = 3;
 const int D2_Pin      = 4;
@@ -52,6 +55,52 @@ const int A_RES_Pin   = 36;
 
 const int SW0_Pin     = 34;
 const int SW1_Pin     = 32;
+#else
+
+const int D0_Pin      = 21;
+const int D1_Pin      = 19;
+const int D2_Pin      = 10;
+const int D3_Pin      = 11;
+const int D4_Pin      = 60;
+const int D5_Pin      = 61;
+const int D6_Pin      = 62;
+const int D7_Pin      = 63;
+
+const int A0_Pin      = 9;
+const int A1_Pin      = 8;
+const int A2_Pin      = 7;
+const int A3_Pin      = 6;
+const int A4_Pin      = 5;
+const int A5_Pin      = 4;
+const int A6_Pin      = 3;
+const int A7_Pin      = 2;
+const int A8_Pin      = 10;
+const int A9_Pin      = 11;
+const int A10_Pin     = 64;
+const int A11_Pin     = 65;
+const int A12_Pin     = 66;
+const int A13_Pin     = 69;
+const int A14_Pin     = 53;
+const int A15_Pin     = 52;
+
+const int BUSREQ_Pin  = 45;
+const int BUSACK_Pin  = 24;
+const int WR_Pin      = 32;
+const int RD_Pin      = 34;
+const int MREQ_Pin    = 30;
+const int IOREQ_Pin   = 44;
+const int HALT_Pin    = 22;
+const int NMI_Pin     = 39;
+const int INT_Pin     = 18;
+const int M1_Pin      = 35;
+const int WAIT_Pin    = 37;
+const int A_CLK_Pin   = 41;
+const int A_RES_Pin   = 33;
+const int RFSH_Pin    = 31;
+const int SW0_Pin     = 34;
+const int SW1_Pin     = 32;
+
+#endif
 
 const int address_pins[] =
   {
@@ -86,10 +135,27 @@ const int data_pins[] =
   };
 
 // Z80 modes
-enum {
-  MODE_SLAVE,
-  NUM_MODES,
-};
+enum
+  {
+    MODE_SLAVE,
+    NUM_MODES,
+  };
+
+// Cycle type
+enum
+  {
+    CYCLE_NONE,
+    CYCLE_MEM,
+    CYCLE_IO,
+  };
+
+// Cycle direction
+enum
+  {
+    CYCLE_DIR_NONE,
+    CYCLE_DIR_RD,
+    CYCLE_DIR_WR,
+  };
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -355,6 +421,7 @@ struct
     uint8_t mode_val;    // Default value for this mode
   } modes[1];
 }
+ 
   signal_list[] =
     {
       {  "BUSACK", BUSACK_Pin, {{MODE_SLAVE, INPUT, HIGH}}},
@@ -363,6 +430,7 @@ struct
       {  "    WR", WR_Pin,     {{MODE_SLAVE, INPUT, HIGH}}},
       {  "    RD", RD_Pin,     {{MODE_SLAVE, INPUT, HIGH}}},
       {  "    M1", M1_Pin,     {{MODE_SLAVE, INPUT, HIGH}}},
+      {  "  RFSH", RFSH_Pin,   {{MODE_SLAVE, INPUT, HIGH}}},
       {  "   NMI", NMI_Pin,    {{MODE_SLAVE, OUTPUT, HIGH}}},
       {  "   INT", INT_Pin,    {{MODE_SLAVE, OUTPUT, HIGH}}},
       {  "  WAIT", WAIT_Pin,   {{MODE_SLAVE, OUTPUT, HIGH}}},
@@ -371,10 +439,28 @@ struct
       {  "---",    0,          {{MODE_SLAVE, INPUT, HIGH}}},
     };
 
-void signal_state(int signal)
+// returns state of signal
+int signal_state(String signal)
 {
-}
+  int state = -1;
   
+  for(int i=0;;i++)
+    {
+      if ( signal_list[i].signame == "---" )
+	{
+	  // Done
+	  break;
+	}
+      
+      if( signal_list[i].signame.endsWith(signal) )
+	{
+	  state = digitalRead(signal_list[i].pin);
+	}
+    }
+  
+  return(state);
+}
+
 void dump_misc_signals()
 {
   if (VERTICAL_LABELS)
@@ -588,6 +674,8 @@ void cmd_run_test_code()
 {
   boolean running = true;
   int state = STATE_NONE;
+  int cycle_type = CYCLE_NONE;
+  int cycle_dir = CYCLE_DIR_NONE;
   
   // We have a logical address space for the array of code such that the code starts at
   // 0000H, which is the reset vector
@@ -630,10 +718,38 @@ void cmd_run_test_code()
       
       // Now check for things we have to do
       // We really only need respond to memory read/write and IO read/write
+      int wr = signal_state("WR");
+      int rd = signal_state("RD");
+      int mreq = signal_state("MREQ");
+      int ioreq = signal_state("IOREQ");
       
-      if (signal_state(WR_Pin) == LOW)
+      if ( wr == LOW)
 	{
+	  cycle_dir = CYCLE_DIR_WR;
+	  // Write cycle
+	  if (mreq == LOW )
+	    {
+	      cycle_type = CYCLE_MEM;
+	    }
+	  if (ioreq == LOW )
+	    {
+	      cycle_type = CYCLE_IO;
+	    }
 	  
+	}
+
+      if ( rd == LOW)
+	{
+	  cycle_dir = CYCLE_DIR_RD;
+	  // Write cycle
+	  if (mreq == LOW )
+	    {
+	      cycle_type = CYCLE_MEM;
+	    }
+	  if (ioreq == LOW )
+	    {
+	      cycle_type = CYCLE_IO;
+	    }
 	}
     }
 }
