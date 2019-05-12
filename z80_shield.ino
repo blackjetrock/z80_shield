@@ -74,11 +74,11 @@ const int A4_Pin      = 5;
 const int A5_Pin      = 4;
 const int A6_Pin      = 3;
 const int A7_Pin      = 2;
-const int A8_Pin      = 10;
-const int A9_Pin      = 11;
-const int A10_Pin     = 64;
-const int A11_Pin     = 65;
-const int A12_Pin     = 66;
+const int A8_Pin      = 64;
+const int A9_Pin      = 65;
+const int A10_Pin     = 66;
+const int A11_Pin     = 67;
+const int A12_Pin     = 68;
 const int A13_Pin     = 69;
 const int A14_Pin     = 53;
 const int A15_Pin     = 52;
@@ -805,10 +805,10 @@ void cmd_dump_signals()
 BYTE example_code[] =
   {
     0x3e, 0xaa,          // LOOP:   LD A, 03EH
-    0x21, 0x12, 0x34,    //         LD HL 01234H
+    0x21, 0x34, 0x12,    //         LD HL 01234H
     0x77,                //         LD (HL), A
     0x23,                //         INC HL
-    0xc3, 0x12, 0x34     //         JR LOOP
+    0xc3, 0x0, 0x0     //         JR LOOP
   };
 
 

@@ -13,4 +13,10 @@ Fixed above on V1.2 PCB
 
 4,5 fixed in V1.2
 
+6. No vref for A/D
 
+7. Unconnected lines on 74ls138
+8. MAPRQ lines requires OR gate
+
+9. BUSRQ named as BUSREQ on Z80 so no net
+10. IORQ named as IOREQ on Z80 so no net
