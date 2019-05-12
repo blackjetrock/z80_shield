@@ -3,11 +3,15 @@
 // Serial monitor based control program
 //
 
-#define VERTICAL_LABELS  0
+void run_bsm(int stim);
+char * bsm_state_name();
 
 typedef unsigned char BYTE;
 typedef void (*FPTR)();
 typedef void (*CMD_FPTR)(String cmd);
+
+
+#define VERTICAL_LABELS  0
 
 // Pin definitions
 
@@ -200,7 +204,9 @@ struct
   int     assert_ev;   // Assert event
   int     deassert_ev; // Deassert event
 }
-  
+// The order in this list defines the order in which events will be raised, which affects how th e
+// bus state machine will be laid out.
+//
   signal_list[] =
     {
       {  "BUSREQ", BUSREQ_Pin, 0, {{MODE_SLAVE, OUTPUT, HIGH}}, EV_A_BUSREQ, EV_D_BUSREQ},
@@ -237,6 +243,138 @@ enum
     SIG_RES,
   };
 
+
+
+struct TRANSITION
+{
+  int stim;
+  int next_state;
+};
+
+#define NUM_ENTRY 2
+#define NUM_TRANS 3
+
+struct STATE
+{
+int        statenum;
+char       *state_name;
+FPTR       entry[NUM_ENTRY];
+TRANSITION trans[NUM_TRANS];
+};
+
+int current_state;
+
+
+
+
+enum 
+  {
+    STATE_IDLE,
+    STATE_OP1,
+    STATE_OP2,
+    STATE_OP3,
+    STATE_OP4,
+    STATE_OP5,
+    STATE_RFSH1,
+    STATE_RFSH2,
+    STATE_NUM
+  };
+
+
+////////////////////////////////////////////////////////////////////////////////
+//
+// Bus state machine
+//
+//
+
+void entry_null();
+
+const STATE bsm[] =
+  {
+    { 
+      STATE_IDLE,
+      "Idle",
+      {
+	entry_null,
+      },
+      {
+	{EV_A_M1,   STATE_OP1},
+	{EV_A_RFSH, STATE_RFSH1},
+      }
+    },
+    { 
+      STATE_OP1,
+      "Opcode 1",
+      {
+	entry_null,
+      },
+      {
+	{EV_A_MREQ, STATE_OP2},
+      }
+    },
+    { 
+      STATE_OP2,
+      "Opcode 2",
+      {
+	entry_null,
+      },
+      {
+	{EV_A_RD, STATE_OP3},
+      }
+    },
+    { 
+      STATE_OP3,
+      "Opcode 3",
+      {
+	entry_null,
+      },
+      {
+	{EV_D_M1, STATE_IDLE},
+      }
+    },
+    { 
+      STATE_OP4,
+      "Opcode 4",
+      {
+	entry_null,
+      },
+      {
+	{EV_D_M1, STATE_IDLE},
+      }
+    },
+    { 
+      STATE_OP5,
+      "Opcode 5",
+      {
+	entry_null,
+      },
+      {
+	{EV_A_RD, STATE_OP3},
+      }
+    },
+    { 
+      STATE_RFSH1,
+      "Refresh Cycle",
+      {
+	entry_null,
+      },
+      {
+	{EV_D_RFSH, STATE_IDLE},
+      }
+    },
+  };
+
+void entry_null()
+{
+  Serial.print("State: ");
+  Serial.println(bsm_state_name());
+}
+
+char * bsm_state_name()
+{
+  int i = find_state_index(current_state);
+  return(bsm[i].state_name);
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 //
@@ -678,20 +816,6 @@ void initialise_signals()
     }
 }
 
-// Generate an event and process it
-void signal_event(int sig, int sense)
-{
-  Serial.print(signal_list[sig].signame);
-  
-  if( sense == EV_ASSERT)
-    {
-      Serial.println(" ASSERT");
-    }
-  else 
-    {
-      Serial.println(" DEASSERT");
-    }
-}
 
 ////////////////////////////////////////////////////////////////////////////////
 //
@@ -728,6 +852,72 @@ void signal_scan()
       
     }
 }
+
+
+// Generate an event and process it
+void signal_event(int sig, int sense)
+{
+  Serial.print(signal_list[sig].signame);
+  
+  if( sense == EV_ASSERT)
+    {
+      Serial.println(" ASSERT");
+      run_bsm(signal_list[sig].assert_ev);
+    }
+  else 
+    {
+      Serial.println(" DEASSERT");
+      run_bsm(signal_list[sig].deassert_ev);
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+//
+// Bus state machine
+//
+//
+
+int find_state_index(int state)
+{
+  for(int i=0; i<STATE_NUM;i++)
+    {
+      if( bsm[i].statenum == state )
+	{
+	  return(i);
+	}
+    }
+
+  // Error, default to idle
+  Serial.println("***ERROR state not found ***");
+  return(STATE_IDLE);
+}
+
+void run_bsm(int stim)
+{
+  int current_state_i = find_state_index(current_state);
+
+  // A stimulus has come in, put it into the bsm
+  for(int i=0; i<NUM_TRANS; i++)
+    {
+      if ( stim == bsm[current_state_i].trans[i].stim )
+	{
+	  // Transition
+	  int next_state = bsm[current_state_i].trans[i].next_state;
+
+	  current_state = next_state;
+
+	  for(int j=0; j<NUM_ENTRY; j++)
+	    {
+	      FPTR fn = bsm[current_state_i].entry[j];
+	      if ( fn != 0 )
+		{
+		  (*fn)();
+		}
+	    }
+	}
+    }
+}
+
 
 ////////////////////////////////////////////////////////////////////////////////
 //
@@ -772,10 +962,6 @@ void cmd_dump_signals()
   unsigned int address;
   unsigned int data;
 
-  
-  Serial.println("");
-  Serial.println("Z80 State");  
-
   // Address bus
   address = addr_state();
   
@@ -808,7 +994,7 @@ BYTE example_code[] =
     0x21, 0x34, 0x12,    //         LD HL 01234H
     0x77,                //         LD (HL), A
     0x23,                //         INC HL
-    0xc3, 0x0, 0x0     //         JR LOOP
+    0xc3, 0x5, 0x0     //         JR LOOP
   };
 
 
@@ -828,6 +1014,12 @@ enum {
   STATE_IO_WR,
   STATE_INT_ACK,
 };
+
+////////////////////////////////////////////////////////////////////////////////
+//
+// Runs code at a programming model level, all refresh cycles etc are hidden
+//
+////////////////////////////////////////////////////////////////////////////////
 
 void cmd_run_test_code()
 {
@@ -857,6 +1049,117 @@ void cmd_run_test_code()
 
       // Now check for things we have to do
       // We really only need respond to memory read/write and IO read/write
+
+      int wr = signal_state("WR");
+      int rd = signal_state("RD");
+      int mreq = signal_state("MREQ");
+      int ioreq = signal_state("IOREQ");
+      int m1 = signal_state("M1");
+
+      if ( (rd == HIGH) )
+	{
+	  // Data bus back to inputs
+	  data_bus_inputs();
+	}
+      
+      if ( (wr == LOW) && (mreq == LOW) )
+	{
+	  cycle_dir = CYCLE_DIR_WR;
+
+	  // Write cycle
+	  if (mreq == LOW )
+	    {
+	      cycle_type = CYCLE_MEM;
+	    }
+	}
+
+      // Read cycle, put data on the bus, based on address
+      if ( (rd == LOW) && (mreq == LOW))
+	{
+	  cycle_dir = CYCLE_DIR_RD;
+
+	  // Write cycle
+	  if (mreq == LOW )
+	    {
+	      cycle_type = CYCLE_MEM;
+	    }
+
+	  // Drive data bus
+	  data_bus_outputs();
+	  set_data_state(example_code[addr_state() & 0xff]);
+	  Serial.print(" ");
+	  Serial.print(addr_state(), HEX);
+	  Serial.print(": ");
+	  Serial.print(example_code[addr_state() & 0xff], HEX);
+	}
+
+      // Allow interaction
+      Serial.println(" (return:next q:quit 1:assert reset 0:deassert reset d:dump regs)");
+      
+      while ( !Serial.available())
+	{
+	}
+
+      boolean cmdloop = true;
+      
+      while( cmdloop )
+	{
+	  switch( Serial.read())
+	    {
+	    case '1':
+	      assert_signal(SIG_RES);
+	      break;
+
+	    case '0':
+	      deassert_signal(SIG_RES);
+	      break;
+
+	    case 'q':
+	      running = false;
+	      cmdloop = false;
+	      break;
+	      
+	    case '\r':
+	      cmdloop = false;
+	      break;
+	    }
+	}
+      
+    }
+}
+
+// Traces test code at the t state level, all cycles are shown
+
+void cmd_trace_test_code()
+{
+  boolean running = true;
+  int state = STATE_NONE;
+  int cycle_type = CYCLE_NONE;
+  int cycle_dir = CYCLE_DIR_NONE;
+  
+  // We have a logical address space for the array of code such that the code starts at
+  // 0000H, which is the reset vector
+
+  // reset Z80
+  reset_z80();
+
+  // Clock and monitor the bus signals to work out what to do
+  while( running )
+    {
+      // Half t states so we can examine all clock transitions
+      half_t_state();
+      delay(10);
+
+      // Dump the status so we can see what's happening
+      cmd_dump_signals();
+
+      //Update events
+      signal_scan();
+
+      // Now check for things we have to do
+      // We really only need respond to memory read/write and IO read/write
+
+
       int wr = signal_state("WR");
       int rd = signal_state("RD");
       int mreq = signal_state("MREQ");
@@ -900,6 +1203,9 @@ void cmd_run_test_code()
 	}
 
       // Allow interaction
+      Serial.println("");
+      Serial.print("Bus state:");
+      Serial.println(bsm_state_name());
       Serial.println(" (return:next q:quit 1:assert reset 0:deassert reset d:dump regs)");
       
       while ( !Serial.available())
@@ -953,7 +1259,8 @@ struct
 } cmdlist [] =
   {
     {"g",         cmd_grab_z80},
-    {"t",         cmd_run_test_code},
+    {"t",         cmd_trace_test_code},
+    {"r",         cmd_run_test_code},
     {"---",       cmd_dummy},
   };
 
