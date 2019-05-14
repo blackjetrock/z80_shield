@@ -264,9 +264,6 @@ TRANSITION trans[NUM_TRANS];
 
 int current_state;
 
-
-
-
 enum 
   {
     STATE_IDLE,
@@ -280,6 +277,21 @@ enum
     STATE_NUM
   };
 
+// table of instructions
+
+struct INSTRUCTION
+{
+  boolean valid;
+  const char *opcode_name;
+  int length;
+};
+
+INSTRUCTION instruction[256] =
+  {
+    {true, "NOP", 1}     //00
+    
+
+  };
 
 ////////////////////////////////////////////////////////////////////////////////
 //
@@ -287,7 +299,20 @@ enum
 //
 //
 
+
 void entry_null();
+
+int inst_addr;
+int inst_inst[3];
+
+// opcode1 entry action
+void entry_opcode3()
+{
+  // Store instruction data
+  inst_addr = addr_state();
+
+  inst_inst[0] = data_state();
+}
 
 const STATE bsm[] =
   {
@@ -326,7 +351,7 @@ const STATE bsm[] =
       STATE_OP3,
       "Opcode 3",
       {
-	entry_null,
+	entry_opcode3,
       },
       {
 	{EV_D_M1, STATE_IDLE},
