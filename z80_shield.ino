@@ -967,7 +967,8 @@ void cmd_dump_signals()
 
 // Test Z80 code
 
-BYTE example_code1[] =
+// Writes to RAM then reads it back
+BYTE example_code2[] =
   {
     0x3e, 0xaa,          // LOOP:   LD A, 03EH
     0x21, 0x34, 0x82,    //         LD HL 01234H
@@ -977,12 +978,39 @@ BYTE example_code1[] =
     0xc3, 0x5, 0x0     //         JR LOOP
   };
 
-BYTE example_code[] =
+// writes to bank register
+BYTE example_code1[] =
   {
     0x0e, 0xc0,          // LOOP:   LD C, 60H
     0x3e, 0xaa,          //         LD  A, AAH
     0xed, 0x79,         //          OUT (C), A
     0xc3, 0x05, 0x00
+  };
+
+// Writes some code to RAM then jumps to it
+// Code can then be free run
+
+BYTE example_code[] =
+  {
+0x16, 0x07,              //    LD   D,ENDCODE-RAMCODE   
+0x21, 0x00, 0x80,          //     LD   HL,8000H   
+0x01, 0x12, 0x00,  //             LD   BC,RAMCODE   
+          //   COPYLOOP:      
+0x0A,        //             LD   A,(BC)   
+0x77,        //             LD   (HL),A   
+0x23,        //             INC   HL   
+0x03,        //             INC   BC   
+0x15,        //             DEC   DE   
+0x20, 0xF9,     //             JR   NZ,COPYLOOP   
+0xC3, 0x00, 0x80,  //             JP   8000H   
+          //   RAMCODE:      
+0x21, 0x00, 0x81,  //             LD   HL,8100H   
+0x7E,        //   RLOOP:    LD   A,(HL)   
+0x23,        //             INC   HL   
+0x18, 0xFC,     //             JR   RLOOP   
+          //   ENDCODE:      
+
+    
   };
 
 
@@ -1082,6 +1110,8 @@ void cmd_run_test_code()
 	}
 
       // Allow interaction
+      
+      Serial.println(" (G:Grab Bus  R: release bus)");
       Serial.println(" (return:next q:quit 1:assert reset 0:deassert reset d:dump regs)");
       
       while ( !Serial.available())
@@ -1094,6 +1124,14 @@ void cmd_run_test_code()
 	{
 	  switch( Serial.read())
 	    {
+	    case 'G':
+	      assert_signal(SIG_BUSREQ);
+	      break;
+
+	    case 'R':
+	      deassert_signal(SIG_BUSREQ);
+	      break;
+	      
 	    case '1':
 	      assert_signal(SIG_RES);
 	      break;
@@ -1194,6 +1232,7 @@ void cmd_trace_test_code()
       Serial.println("");
       Serial.print("Bus state:");
       Serial.println(bsm_state_name());
+      Serial.println(" (G:Grab Bus  R: release bus M:Mega control  F:Free run)");
       Serial.println(" (return:next q:quit 1:assert reset 0:deassert reset d:dump regs)");
       
       while ( !Serial.available())
@@ -1206,6 +1245,26 @@ void cmd_trace_test_code()
 	{
 	  switch( Serial.read())
 	    {
+	    case 'M':
+	      // Select Mega control of reset and clock
+	      digitalWrite(SW0_Pin, HIGH);
+	      digitalWrite(SW1_Pin, LOW);
+	      break;
+
+	    case 'F':
+	      // Free run
+	      digitalWrite(SW0_Pin, LOW);
+	      digitalWrite(SW1_Pin, LOW);
+	      break;
+	      
+	    case 'G':
+	      assert_signal(SIG_BUSREQ);
+	      break;
+
+	    case 'R':
+	      deassert_signal(SIG_BUSREQ);
+	      break;
+	      
 	    case '1':
 	      assert_signal(SIG_RES);
 	      break;
@@ -1324,7 +1383,6 @@ void setup()
   // Select Mega control of reset and clock
   digitalWrite(SW0_Pin, HIGH);
   digitalWrite(SW1_Pin, LOW);
-
 
   initialise_z80_for_control();
 
