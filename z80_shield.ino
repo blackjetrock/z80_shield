@@ -6,6 +6,9 @@
 void run_bsm(int stim);
 char * bsm_state_name();
 
+// Run in quiet mode
+boolean quiet = false;
+
 typedef unsigned char BYTE;
 typedef void (*FPTR)();
 typedef void (*CMD_FPTR)(String cmd);
@@ -345,8 +348,11 @@ const STATE bsm[] =
 
 void entry_null()
 {
-  Serial.print("State: ");
-  Serial.println(bsm_state_name());
+  if (!quiet )
+    {
+      Serial.print("State: ");
+      Serial.println(bsm_state_name());
+    }
 }
 
 char * bsm_state_name()
@@ -668,6 +674,11 @@ int signal_state(String signal)
 
 void dump_misc_signals()
 {
+  if( quiet)
+    {
+      return;
+    }
+
   if (VERTICAL_LABELS)
     {
       // Length of any name will do, they should all be the same
@@ -687,13 +698,15 @@ void dump_misc_signals()
 	      Serial.print(" ");	  
 	      Serial.print( signal_list[i].signame.charAt(l) );
 	    }
-	  
 	  Serial.println("");
 	}
+
       // Labels  printed, now display the value of the signal
       for(int i=0;;i++)
 	{
+	  
 	  Serial.print(" ");
+
 	  if ( signal_list[i].signame == "---" )
 	    {
 	      // Done
@@ -836,16 +849,25 @@ void signal_scan()
 // Generate an event and process it
 void signal_event(int sig, int sense)
 {
-  Serial.print(signal_list[sig].signame);
-  
+  if ( !quiet )
+    {
+      Serial.print(signal_list[sig].signame);
+    }
+
   if( sense == EV_ASSERT)
     {
-      Serial.println(" ASSERT");
+      if ( !quiet )
+	{
+	  Serial.println(" ASSERT");
+	}
       run_bsm(signal_list[sig].assert_ev);
     }
   else 
     {
-      Serial.println(" DEASSERT");
+      if ( !quiet )
+	{
+	  Serial.println(" DEASSERT");
+	}
       run_bsm(signal_list[sig].deassert_ev);
     }
 }
@@ -1057,8 +1079,6 @@ void cmd_run_test_code()
       half_t_state();
       delay(10);
 
-      // Dump the status so we can see what's happening
-      cmd_dump_signals();
 
       //Update events
       signal_scan();
@@ -1114,7 +1134,7 @@ void cmd_run_test_code()
       Serial.println(" (G:Grab Bus  R: release bus)");
       Serial.println(" (return:next q:quit 1:assert reset 0:deassert reset d:dump regs)");
       
-      while ( !Serial.available())
+      while ( Serial.available()==0)
 	{
 	}
 
@@ -1162,6 +1182,8 @@ void cmd_trace_test_code()
   int state = STATE_NONE;
   int cycle_type = CYCLE_NONE;
   int cycle_dir = CYCLE_DIR_NONE;
+  boolean fast_mode = false;       // Skip all output and interaction
+  int fast_mode_n = 0;
   
   // We have a logical address space for the array of code such that the code starts at
   // 0000H, which is the reset vector
@@ -1174,17 +1196,28 @@ void cmd_trace_test_code()
     {
       // Half t states so we can examine all clock transitions
       half_t_state();
-      delay(10);
+      delay(5);
 
       // Dump the status so we can see what's happening
-      cmd_dump_signals();
+      // Dump the status so we can see what's happening
+      if ( !fast_mode )
+	{
+	  cmd_dump_signals();
+	}
+      else
+	{
+	  if( (fast_mode_n % 10)==0 )
+	    {
+	      Serial.println(fast_mode_n);
+	    }
+	}
+
 
       //Update events
       signal_scan();
 
       // Now check for things we have to do
       // We really only need respond to memory read/write and IO read/write
-
 
       int wr = signal_state("WR");
       int rd = signal_state("RD");
@@ -1212,78 +1245,120 @@ void cmd_trace_test_code()
       if ( (rd == LOW) && (mreq == LOW) && (addr_state() < 0x100))
 	{
 	  cycle_dir = CYCLE_DIR_RD;
-
+	  
 	  // Write cycle
 	  if (mreq == LOW )
 	    {
 	      cycle_type = CYCLE_MEM;
 	    }
-
+	  
 	  // Drive data bus
 	  data_bus_outputs();
 	  set_data_state(example_code[addr_state() & 0xff]);
-	  Serial.print("Putting data on bus ");
-	  Serial.print(addr_state(), HEX);
-	  Serial.print(" ");
-	  Serial.print(example_code[addr_state() & 0xff], HEX);
-	}
-
-      // Allow interaction
-      Serial.println("");
-      Serial.print("Bus state:");
-      Serial.println(bsm_state_name());
-      Serial.println(" (G:Grab Bus  R: release bus M:Mega control  F:Free run)");
-      Serial.println(" (return:next q:quit 1:assert reset 0:deassert reset d:dump regs)");
-      
-      while ( !Serial.available())
-	{
-	}
-
-      boolean cmdloop = true;
-      
-      while( cmdloop )
-	{
-	  switch( Serial.read())
+	  if ( !fast_mode )
 	    {
-	    case 'M':
-	      // Select Mega control of reset and clock
-	      digitalWrite(SW0_Pin, HIGH);
-	      digitalWrite(SW1_Pin, LOW);
-	      break;
-
-	    case 'F':
-	      // Free run
-	      digitalWrite(SW0_Pin, LOW);
-	      digitalWrite(SW1_Pin, LOW);
-	      break;
-	      
-	    case 'G':
-	      assert_signal(SIG_BUSREQ);
-	      break;
-
-	    case 'R':
-	      deassert_signal(SIG_BUSREQ);
-	      break;
-	      
-	    case '1':
-	      assert_signal(SIG_RES);
-	      break;
-
-	    case '0':
-	      deassert_signal(SIG_RES);
-	      break;
-
-	    case 'q':
-	      running = false;
-	      cmdloop = false;
-	      break;
-	      
-	    case '\r':
-	      cmdloop = false;
-	      break;
+	      Serial.print("Putting data on bus ");
+	      Serial.print(addr_state(), HEX);
+	      Serial.print(" ");
+	      Serial.print(example_code[addr_state() & 0xff], HEX);
 	    }
 	}
       
+      // If we are running t states then skip the menu stuff.
+      // If there's serial input then we stop the t states
+      
+      if ( fast_mode )
+	{
+	  if ( fast_mode_n > 0 )
+	    {
+	      fast_mode_n--;
+	    }
+
+	  if ( fast_mode_n == 0 )
+	    {
+	      fast_mode = false;
+	      quiet = false;
+	    }
+
+	  if ( Serial.available()>0 )
+	    {
+	      // Turn fast mode off if there's a keypress
+	      fast_mode = false;
+	      quiet = false;
+	    }
+	}
+      else
+	{
+	  // Allow interaction
+	  Serial.println("");
+	  Serial.print("Bus state:");
+	  Serial.println(bsm_state_name());
+	  Serial.println(" (G:Grab Bus  R: release bus M:Mega control  F:Free run T:Drive n tstates)");
+	  Serial.println(" (return:next q:quit 1:assert reset 0:deassert reset d:dump regs)");
+	  
+	  while ( Serial.available() == 0)
+	    {
+	    }
+	  Serial.println(Serial.available());
+
+	  boolean cmdloop = true;
+	  
+	  while( cmdloop )
+	    {
+	      if( Serial.available() > 0 )
+		{
+		  switch( Serial.read())
+		    {
+		    case 'T':
+		      fast_mode = true;
+		      fast_mode_n = 100;
+		      quiet = true;
+		      delay(100);
+		      fast_mode_n = get_parameter();
+		      cmdloop = false;
+		      break;
+		      
+		    case 'M':
+		      // Select Mega control of reset and clock
+		      digitalWrite(SW0_Pin, HIGH);
+		      digitalWrite(SW1_Pin, LOW);
+		      break;
+		      
+		    case 'F':
+		      // Free run
+		      digitalWrite(SW0_Pin, LOW);
+		      digitalWrite(SW1_Pin, LOW);
+		      break;
+		      
+		    case 'G':
+		      assert_signal(SIG_BUSREQ);
+		      break;
+		      
+		    case 'R':
+		      deassert_signal(SIG_BUSREQ);
+		      break;
+		      
+		    case '1':
+		      assert_signal(SIG_RES);
+		  break;
+		  
+		    case '0':
+		      deassert_signal(SIG_RES);
+		      break;
+		      
+		    case 'q':
+		      running = false;
+		      cmdloop = false;
+		      break;
+		      
+		    case '\r':
+		      cmdloop = false;
+		      break;
+		    }
+		}
+	      
+	    }
+	}
     }
 }
 
@@ -1319,7 +1394,7 @@ void run_monitor()
   int i;
   String test;
   
-  if( Serial.available() )
+  if( Serial.available()>0 )
     {
       c = Serial.read();
       //Serial.println(c,HEX);
@@ -1354,6 +1429,35 @@ void run_monitor()
 	  break;
 	}
     }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+//
+// Gets a numeric parameter form th eserial input
+//
+
+int get_parameter()
+{
+  String s = "";
+  int c;
+  int n = 0;
+
+  while( Serial.available() > 0 )
+    {
+      n++;
+      c = Serial.read();
+
+      if (isDigit(c) )
+	{
+	  s += (char)c;
+	}
+    }
+
+  Serial.print(n);
+  Serial.print("par=");
+
+  Serial.println(s);
+  return(s.toInt());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
