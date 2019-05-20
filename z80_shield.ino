@@ -1035,6 +1035,14 @@ BYTE example_code[] =
     
   };
 
+BYTE example_code3[] =
+  {
+    0x0e, 0xc0,          // LOOP:   LD C, 60H
+    0x3e, 0xaa,          //         LD  A, AAH
+    0xed, 0x79,         //          OUT (C), A
+    0xc3, 0x05, 0x00
+  };
+
 
 // In this mode the Mega is essentially a slave of the Z80. We provide the clock and reset signals
 // But we have to minitor bus signals to see what the Z80 wants to do. We emulate an address space
