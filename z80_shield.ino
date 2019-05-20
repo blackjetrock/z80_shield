@@ -15,56 +15,10 @@ typedef void (*CMD_FPTR)(String cmd);
 
 // Pin definitions
 
-#if 0
-
-const int D0_Pin      = 2;
-const int D1_Pin      = 3;
-const int D2_Pin      = 4;
-const int D3_Pin      = 5;
-const int D4_Pin      = 6;
-const int D5_Pin      = 7;
-const int D6_Pin      = 8;
-const int D7_Pin      = 9;
-
-const int A0_Pin      = 22;
-const int A1_Pin      = 23;
-const int A2_Pin      = 24;
-const int A3_Pin      = 25;
-const int A4_Pin      = 26;
-const int A5_Pin      = 27;
-const int A6_Pin      = 28;
-const int A7_Pin      = 29;
-const int A8_Pin      = 53;
-const int A9_Pin      = 52;
-const int A10_Pin     = 51;
-const int A11_Pin     = 50;
-const int A12_Pin     = 10;
-const int A13_Pin     = 11;
-const int A14_Pin     = 12;
-const int A15_Pin     = 13;
-
-const int BUSREQ_Pin  = 45;
-const int BUSACK_Pin  = 44;
-const int WR_Pin      = 48;
-const int RD_Pin      = 49;
-const int MREQ_Pin    = 47;
-const int IOREQ_Pin   = 46;
-const int HALT_Pin    = 43;
-const int NMI_Pin     = 51;
-const int INT_Pin     = 42;
-const int M1_Pin      = 39;
-const int WAIT_Pin    = 40;
-const int A_CLK_Pin   = 38;
-const int A_RES_Pin   = 36;
-
-const int SW0_Pin     = 34;
-const int SW1_Pin     = 32;
-#else
-
 const int D0_Pin      = 21;
 const int D1_Pin      = 19;
 const int D2_Pin      = 10;
-const int D3_Pin      = 11;
+const int D3_Pin      = 59;
 const int D4_Pin      = 60;
 const int D5_Pin      = 61;
 const int D6_Pin      = 62;
@@ -87,12 +41,12 @@ const int A13_Pin     = 69;
 const int A14_Pin     = 53;
 const int A15_Pin     = 52;
 
-const int BUSREQ_Pin  = 45;
+const int BUSREQ_Pin  = 26;
 const int BUSACK_Pin  = 24;
 const int WR_Pin      = 32;
 const int RD_Pin      = 34;
 const int MREQ_Pin    = 30;
-const int IOREQ_Pin   = 44;
+const int IOREQ_Pin   = 46;
 const int HALT_Pin    = 22;
 const int NMI_Pin     = 39;
 const int INT_Pin     = 18;
@@ -101,10 +55,10 @@ const int WAIT_Pin    = 37;
 const int A_CLK_Pin   = 41;
 const int A_RES_Pin   = 33;
 const int RFSH_Pin    = 31;
-const int SW0_Pin     = 34;
-const int SW1_Pin     = 32;
+const int SW0_Pin     = 29;
+const int SW1_Pin     = 25;
 
-#endif
+const int MAPREQ_Pin  = 0;
 
 const int address_pins[] =
   {
@@ -1013,13 +967,22 @@ void cmd_dump_signals()
 
 // Test Z80 code
 
-BYTE example_code[] =
+BYTE example_code1[] =
   {
     0x3e, 0xaa,          // LOOP:   LD A, 03EH
-    0x21, 0x34, 0x12,    //         LD HL 01234H
+    0x21, 0x34, 0x82,    //         LD HL 01234H
     0x77,                //         LD (HL), A
+    0x7e,                //         LD   A,(HL)
     0x23,                //         INC HL
     0xc3, 0x5, 0x0     //         JR LOOP
+  };
+
+BYTE example_code[] =
+  {
+    0x0e, 0xc0,          // LOOP:   LD C, 60H
+    0x3e, 0xaa,          //         LD  A, AAH
+    0xed, 0x79,         //          OUT (C), A
+    0xc3, 0x05, 0x00
   };
 
 
@@ -1208,7 +1171,7 @@ void cmd_trace_test_code()
 	}
 
       // Read cycle, put data on the bus, based on address
-      if ( (rd == LOW) && (mreq == LOW))
+      if ( (rd == LOW) && (mreq == LOW) && (addr_state() < 0x100))
 	{
 	  cycle_dir = CYCLE_DIR_RD;
 
