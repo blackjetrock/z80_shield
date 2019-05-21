@@ -1,0 +1,125 @@
+;Z80 code to set up LCD on shield and write a string
+IO_ADDR_PIO0      EQU  80H
+IO_ADDR_PIO0_AD   EQU  IO_ADDR_PIO0+0
+IO_ADDR_PIO0_BD   EQU  IO_ADDR_PIO0+1
+IO_ADDR_PIO0_AC   EQU  IO_ADDR_PIO0+2
+IO_ADDR_PIO0_BC   EQU  IO_ADDR_PIO0+3
+
+	IO_ADDR_PIO1      EQU  80H
+IO_ADDR_PIO1_AD   EQU  IO_ADDR_PIO1+0
+IO_ADDR_PIO1_BD   EQU  IO_ADDR_PIO1+1
+IO_ADDR_PIO1_AC   EQU  IO_ADDR_PIO1+2
+IO_ADDR_PIO1_BC   EQU  IO_ADDR_PIO1+3
+
+	ORG     0A000H
+	
+SHADOW_A     DB    1
+SHADOW_B     DB    1
+	
+	ORG 0
+
+	LD  SP, 9000
+
+	;; LCD DB4-7
+	LD   C, IO_ADDR_PIO1_AC
+	LD   D, IO_ADDR_PIO1_AD
+	LD   H, 0FH
+	LD   L, 00H
+	CALL PIOINIT
+
+	LD   C, IO_ADDR_PIO1_BC
+	LD   D, IO_ADDR_PIO1_BD
+	LD   H, 0FCH
+	LD   L, 00H
+	CALL PIOINIT
+
+	LD   A, 0
+	LD   (SHADOW_A), A
+	LD   A, 0
+	LD   (SHADOW_B), A
+
+	CALL RS_HIGH
+	CALL E_LOW
+
+LOOP:	JR   LOOP
+	
+	;;  Init PIO port
+	;;  C: PIO control address
+	;;  D: PIO data address
+	;;  L: Data to set up
+	;;  H: IO pattern
+	
+PIOINIT:
+	;; Mode 3
+	LD A, 0CFH
+	OUT (C), A
+	;;  IO pattern
+	LD A, H
+	OUT (C), A
+	
+	;; Write initial data
+	LD A, L
+	LD C, D
+	OUT (C), A
+	RET
+
+RS_LOW:	LD    C, IO_ADDR_PIO1_BD
+	LD    HL,(SHADOW_B)
+	LD    A, (HL)
+	RES   0, A
+	LD    (HL), A
+	OUT   (C), A
+	RET
+
+RS_HIGH:LD    C, IO_ADDR_PIO1_BD
+	LD    HL,(SHADOW_B)
+	LD    A, (HL)
+	SET   0, A
+	LD    (HL), A
+	OUT   (C), A
+	RET
+
+E_LOW:	LD    C, IO_ADDR_PIO1_BD
+	LD    HL,(SHADOW_B)
+	LD    A, (HL)
+	RES   1, A
+	LD    (HL), A
+	OUT   (C), A
+	RET
+
+E_HIGH: LD    C, IO_ADDR_PIO1_BD
+	LD    HL,(SHADOW_B)
+	LD    A, (HL)
+	SET   1, A
+	LD    (HL), A
+	OUT   (C), A
+	RET
+	
+	;;  C: PIO data address
+	;;  D:Data required (8 bits)
+SETDATA:CALL  RS_LOW
+	CALL  E_HIGH
+	LD    A, D
+	SRL   A
+	SRL   A
+	SRL   A
+	SRL   A
+	
+	OUT   (C), A
+	CALL  E_LOW
+
+	CALL  E_HIGH
+	LD    A, D
+	AND   0FH
+	OUT   (C), A
+	CALL  E_LOW
+	CALL  E_HIGH
+	CALL  E_LOW
+	CALL  E_HIGH
+	CALL  E_LOW
+	CALL  E_HIGH
+	CALL  RS_HIGH
+	
+	RET
+	
+

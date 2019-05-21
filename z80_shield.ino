@@ -44,7 +44,7 @@ const int A13_Pin     = 69;
 const int A14_Pin     = 53;
 const int A15_Pin     = 52;
 
-const int BUSREQ_Pin  = 26;
+const int BUSREQ_Pin  = 28;
 const int BUSACK_Pin  = 24;
 const int WR_Pin      = 32;
 const int RD_Pin      = 34;
@@ -142,6 +142,21 @@ enum
     EV_A_RES,    EV_D_RES,
   };
 
+// IO addresses
+const int IO_ADDR_PIO0    = 0x00;
+const int IO_ADDR_PIO0_AD = IO_ADDR_PIO0+0;
+const int IO_ADDR_PIO0_BD = IO_ADDR_PIO0+1;
+const int IO_ADDR_PIO0_AC = IO_ADDR_PIO0+2;
+const int IO_ADDR_PIO0_BC = IO_ADDR_PIO0+3;
+
+const int IO_ADDR_PIO1    = 0x80;
+const int IO_ADDR_PIO1_AD = IO_ADDR_PIO1+0;
+const int IO_ADDR_PIO1_BD = IO_ADDR_PIO1+1;
+const int IO_ADDR_PIO1_AC = IO_ADDR_PIO1+2;
+const int IO_ADDR_PIO1_BC = IO_ADDR_PIO1+3;
+
+const int IO_ADDR_CTC   = 0x40;
+const int IO_ADDR_BANK  = 0xC0;
 
 // Function that dumps a set of control signals, in a compact form
 // The signals to dump are defined in an array
@@ -448,8 +463,9 @@ void bus_request()
   // Send one clock with no check
   t_state();
   
-  while(  signal_state("BUSACK") == HIGH)
+  while(  (signal_state("BUSACK") == HIGH) && !Serial.available())
     {
+      Serial.println("Clocking..");
       t_state();
     }
   
@@ -935,7 +951,7 @@ void cmd_grab_z80(String cmd)
   String arg;
   
   Serial.println("Grabbing Z80");
-  //arg = cmd.substring(1);
+
 
   //stored_bytes[indx] = arg.toInt();
   initialise_z80_for_control();
@@ -953,11 +969,6 @@ void cmd_grab_z80(String cmd)
 //
 ////////////////////////////////////////////////////////////////////////////////
 
-void cmd_free_z80()
-{
-}
-
-  
 void cmd_dump_signals()
 {
   unsigned int address;
@@ -988,9 +999,9 @@ void cmd_dump_signals()
 ////////////////////////////////////////////////////////////////////////////////
 
 // Test Z80 code
-
+  
 // Writes to RAM then reads it back
-BYTE example_code2[] =
+BYTE example_code_ram_chk[] =
   {
     0x3e, 0xaa,          // LOOP:   LD A, 03EH
     0x21, 0x34, 0x82,    //         LD HL 01234H
@@ -1000,19 +1011,26 @@ BYTE example_code2[] =
     0xc3, 0x5, 0x0     //         JR LOOP
   };
 
-// writes to bank register
-BYTE example_code1[] =
+// Turns backlight off
+BYTE example_code_lcd_bl_off[] =
   {
-    0x0e, 0xc0,          // LOOP:   LD C, 60H
-    0x3e, 0xaa,          //         LD  A, AAH
-    0xed, 0x79,         //          OUT (C), A
-    0xc3, 0x05, 0x00
+    0x0e, IO_ADDR_PIO1_BC,    // LOOP:   LD C, 60H
+    0x3e, 0xcf,            //         LD  A, Mode3 control word
+    0xed, 0x79,            //         OUT (C), A
+    0x0e, IO_ADDR_PIO1_BC,    // LOOP:   LD C, 60H
+    0x3e, 0xFB,            //         LD  A, Only B2 as output
+    0xed, 0x79,            //         OUT (C), A
+    0x0e, IO_ADDR_PIO1_BD,    // LOOP:   LD C, 60H
+    0x3e, 0x00,            //         LD  A, All output set to 0
+    0xed, 0x79,            //         OUT (C), A
+    0x18, 0xfe
+
   };
 
 // Writes some code to RAM then jumps to it
 // Code can then be free run
 
-BYTE example_code[] =
+BYTE example_code_ram[] =
   {
 0x16, 0x07,              //    LD   D,ENDCODE-RAMCODE   
 0x21, 0x00, 0x80,          //     LD   HL,8000H   
@@ -1035,7 +1053,7 @@ BYTE example_code[] =
     
   };
 
-BYTE example_code3[] =
+BYTE example_code_bank[] =
   {
     0x0e, 0xc0,          // LOOP:   LD C, 60H
     0x3e, 0xaa,          //         LD  A, AAH
@@ -1043,6 +1061,51 @@ BYTE example_code3[] =
     0xc3, 0x05, 0x00
   };
 
+//--------------------------------------------------------------------------------
+
+struct
+{
+  const char *desc;
+  BYTE  *code;
+}
+code_list[] =
+  {
+    {"Copy code to RAM and execute it", example_code_ram},
+    {"Write value to bank register",    example_code_bank},
+    {"Write then read RAM",             example_code_ram_chk},
+    {"Turn LCD shield backlight off",   example_code_lcd_bl_off},
+    {"-",                               0},
+  };
+
+// Current example code
+BYTE *example_code = example_code_ram;
+
+
+void cmd_set_example_code(String cmd)
+{
+  String arg = cmd.substring(1);
+
+  int code_i = arg.toInt();
+  example_code= code_list[code_i].code;
+  
+  Serial.print("Example code now '");
+  Serial.print(code_list[code_i].desc);
+  Serial.println("'");
+}
+
+void cmd_show_example_code(String cmd)
+{
+  Serial.println("Example Code");
+  
+  for(int i=0; code_list[i].code != 0; i++)
+    {
+      Serial.print(i);
+      Serial.print(": ");
+      Serial.println(code_list[i].desc);
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
 
 // In this mode the Mega is essentially a slave of the Z80. We provide the clock and reset signals
 // But we have to minitor bus signals to see what the Z80 wants to do. We emulate an address space
@@ -1152,8 +1215,9 @@ void cmd_run_test_code()
 	{
 	  switch( Serial.read())
 	    {
+	      
 	    case 'G':
-	      assert_signal(SIG_BUSREQ);
+	      bus_request();
 	      break;
 
 	    case 'R':
@@ -1192,6 +1256,8 @@ void cmd_trace_test_code()
   int cycle_dir = CYCLE_DIR_NONE;
   boolean fast_mode = false;       // Skip all output and interaction
   int fast_mode_n = 0;
+  int trigger_address = 0x8000;    // trigger when we hit RAm by default
+  boolean trigger_on = false;
   
   // We have a logical address space for the array of code such that the code starts at
   // 0000H, which is the reset vector
@@ -1249,8 +1315,8 @@ void cmd_trace_test_code()
 	    }
 	}
 
-      // Read cycle, put data on the bus, based on address
-      if ( (rd == LOW) && (mreq == LOW) && (addr_state() < 0x100))
+      // Read cycle, put data on the bus, based on address, only emulate FLASH for now
+      if ( (rd == LOW) && (mreq == LOW) && (addr_state() < 0x8000))
 	{
 	  cycle_dir = CYCLE_DIR_RD;
 	  
@@ -1282,6 +1348,7 @@ void cmd_trace_test_code()
 	      fast_mode_n--;
 	    }
 
+	  // Do we turn fast mode off?
 	  if ( fast_mode_n == 0 )
 	    {
 	      fast_mode = false;
@@ -1294,14 +1361,34 @@ void cmd_trace_test_code()
 	      fast_mode = false;
 	      quiet = false;
 	    }
+
+	  //Turn fast mode off if we hit the trigger address
+	  if( (addr_state() == trigger_address) && trigger_on )
+	    {
+	      fast_mode = false;
+	      quiet = false;
+	      Serial.print("Trigger address reached (");
+	      Serial.print(trigger_address & 0xffff, HEX);
+	      Serial.println(")");
+	    }
 	}
       else
 	{
 	  // Allow interaction
 	  Serial.println("");
-	  Serial.print("Bus state:");
+	  Serial.print("Breakpoiint:");
+	  if ( trigger_on )
+	    {
+	      Serial.print(trigger_address & 0xffff, HEX);
+	    }
+	  else
+	    {
+	      Serial.print("OFF ");
+	    }
+	  
+	  Serial.print(" Bus state:");
 	  Serial.println(bsm_state_name());
-	  Serial.println(" (G:Grab Bus  R: release bus M:Mega control  F:Free run T:Drive n tstates)");
+	  Serial.println(" (G:Grab Bus  R: release bus M:Mega control  F:Free run T:Drive n tstates) b:Breakpoint B:Toggle breakpoint");
 	  Serial.println(" (return:next q:quit 1:assert reset 0:deassert reset d:dump regs)");
 	  
 	  while ( Serial.available() == 0)
@@ -1317,6 +1404,13 @@ void cmd_trace_test_code()
 		{
 		  switch( Serial.read())
 		    {
+		    case 'P':
+		      bus_request();
+		      
+		      // Write to PIO to set D10 as low (turns LCD backlight off)
+		      //write_io();
+		      break;
+
 		    case 'T':
 		      fast_mode = true;
 		      fast_mode_n = 100;
@@ -1324,6 +1418,17 @@ void cmd_trace_test_code()
 		      delay(100);
 		      fast_mode_n = get_parameter();
 		      cmdloop = false;
+		      break;
+
+		    case 'b':
+		      delay(100);
+		      trigger_address = get_hex_parameter();
+		      trigger_on = true;
+		      cmdloop=false;
+		      break;
+
+		    case 'B':
+		      trigger_on = !trigger_on;
 		      break;
 		      
 		    case 'M':
@@ -1339,7 +1444,7 @@ void cmd_trace_test_code()
 		      break;
 		      
 		    case 'G':
-		      assert_signal(SIG_BUSREQ);
+		      bus_request();
 		      break;
 		      
 		    case 'R':
@@ -1390,17 +1495,21 @@ struct
   {
     {"g",         cmd_grab_z80},
     {"t",         cmd_trace_test_code},
-    {"r",         cmd_run_test_code},
+    {"l",         cmd_show_example_code},
+    {"s",         cmd_set_example_code},
     {"---",       cmd_dummy},
   };
 
 // Interaction with the Mega from the host PC is through a 'monitor' command line type interface.
 
+const String monitor_cmds = "t: Trace code l:list example code s:set code";
 void run_monitor()
 {
   char c;
   int i;
   String test;
+
+
   
   if( Serial.available()>0 )
     {
@@ -1425,6 +1534,7 @@ void run_monitor()
 	      if( test == cmdlist[i].cmdname )
 		{
 		  (*(cmdlist[i].handler))(cmd);
+		  Serial.println(monitor_cmds);
 		  Serial.print("> ");
 		}
 	    }
@@ -1461,11 +1571,39 @@ int get_parameter()
 	}
     }
 
-  Serial.print(n);
-  Serial.print("par=");
+  //Serial.print(n);
+  //  Serial.print("par=");
 
-  Serial.println(s);
+  //Serial.println(s);
   return(s.toInt());
+}
+
+// gets a hex parameter from the command string
+int get_hex_parameter()
+{
+  String s = "";
+  int c;
+  int n = 0;
+
+  while( Serial.available() > 0 )
+    {
+      n++;
+      c = Serial.read();
+
+      if (isHexadecimalDigit(c) )
+	{
+	  s += (char)c;
+	}
+    }
+
+  //  Serial.print(n);
+  //Serial.print("hex par=");
+  //Serial.println(s);
+
+  // Convert from hex to binary
+  long l_val = strtol(s.c_str(), NULL, 16);
+  
+  return((int)l_val);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1505,7 +1643,7 @@ void setup()
   Serial.begin(9600);
   Serial.println("Z80 Shield Monitor");
   Serial.println("    (Set line ending to carriage return)");
-
+  Serial.println(monitor_cmds);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
