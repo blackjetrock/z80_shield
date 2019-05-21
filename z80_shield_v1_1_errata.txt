@@ -26,3 +26,5 @@ Fixed above on V1.2 PCB
 13. 74ls138 enables not connected
 14. MAPREQ signal needed
 15. Better oscillator may be needed
+16. Move Z80 up a bit
+17. crystal needs better space

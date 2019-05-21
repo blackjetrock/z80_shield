@@ -180,6 +180,7 @@ struct
 // bus state machine will be laid out.
 //
   signal_list[] =
+
     {
       {  "BUSREQ", BUSREQ_Pin, 0, {{MODE_SLAVE, OUTPUT, HIGH}}, EV_A_BUSREQ, EV_D_BUSREQ},
       {  "BUSACK", BUSACK_Pin, 0, {{MODE_SLAVE, INPUT, HIGH}},  EV_A_BUSACK, EV_D_BUSACK},
@@ -575,6 +576,7 @@ unsigned int addr_state()
   // Get all the address lines and accumulate the address
   for(int i=15; i>=0; i--)
     {
+
       // Make room for bit
       a <<= 1;
 
@@ -1027,6 +1029,31 @@ BYTE example_code_lcd_bl_off[] =
 
   };
 
+// Turns backlight off
+BYTE example_code_lcd_bl_flash[] =
+  {
+    0x0e, IO_ADDR_PIO1_BC,    // LOOP:   LD C, 60H
+    0x3e, 0xcf,            //         LD  A, Mode3 control word
+    0xed, 0x79,            //         OUT (C), A
+    0x0e, IO_ADDR_PIO1_BC,    // LOOP:   LD C, 60H
+    0x3e, 0xFB,            //         LD  A, Only B2 as output
+    0xed, 0x79,            //         OUT (C), A
+    0x0e, IO_ADDR_PIO1_BD,    // LOOP:   LD C, 60H
+    0x3e, 0x00,            //         LD  A, All output set to 0
+    0xed, 0x79,            //         OUT (C), A
+    0x0e, IO_ADDR_PIO1_BC,    // LOOP:   LD C, 60H
+    0x3e, 0xcf,            //         LD  A, Mode3 control word
+    0xed, 0x79,            //         OUT (C), A
+    0x0e, IO_ADDR_PIO1_BC,    // LOOP:   LD C, 60H
+    0x3e, 0xFF,            //         LD  A, Only B2 as output
+    0xed, 0x79,            //         OUT (C), A
+    0x0e, IO_ADDR_PIO1_BD,    // LOOP:   LD C, 60H
+    0x3e, 0x00,            //         LD  A, All output set to 0
+    0xed, 0x79,            //         OUT (C), A
+    0xc3, 0x0, 0x00
+
+  };
+
 // Writes some code to RAM then jumps to it
 // Code can then be free run
 
@@ -1074,6 +1101,7 @@ code_list[] =
     {"Write value to bank register",    example_code_bank},
     {"Write then read RAM",             example_code_ram_chk},
     {"Turn LCD shield backlight off",   example_code_lcd_bl_off},
+    {"Flash turn LCD shield backlight", example_code_lcd_bl_flash},
     {"-",                               0},
   };
 
@@ -1280,9 +1308,12 @@ void cmd_trace_test_code()
 	}
       else
 	{
-	  if( (fast_mode_n % 10)==0 )
+	  if( (fast_mode_n % 100)==0 )
 	    {
 	      Serial.println(fast_mode_n);
+	    }
+	  if( fast_mode_n == -1 ) 
+	    {
 	    }
 	}
 
@@ -1389,7 +1420,7 @@ void cmd_trace_test_code()
 	  Serial.print(" Bus state:");
 	  Serial.println(bsm_state_name());
 	  Serial.println(" (G:Grab Bus  R: release bus M:Mega control  F:Free run T:Drive n tstates) b:Breakpoint B:Toggle breakpoint");
-	  Serial.println(" (return:next q:quit 1:assert reset 0:deassert reset d:dump regs)");
+	  Serial.println(" (return:next q:quit 1:assert reset 0:deassert reset d:dump regs f:Run forever)");
 	  
 	  while ( Serial.available() == 0)
 	    {
@@ -1418,6 +1449,12 @@ void cmd_trace_test_code()
 		      delay(100);
 		      fast_mode_n = get_parameter();
 		      cmdloop = false;
+		      break;
+
+		    case 'f':
+		      fast_mode = true;
+		      fast_mode_n = -1;
+		      quiet = true;
 		      break;
 
 		    case 'b':
