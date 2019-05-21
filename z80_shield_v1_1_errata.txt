@@ -25,3 +25,4 @@ Fixed above on V1.2 PCB
 12. Mega fp wrong.
 13. 74ls138 enables not connected
 14. MAPREQ signal needed
+15. Better oscillator may be needed
