@@ -567,7 +567,9 @@ void data_bus_outputs()
 //
 ////////////////////////////////////////////////////////////////////////////////
 
-BYTE memory_read(int address)
+// Signal is MREQ or IOREQ
+
+BYTE read_cycle(int address, int signal)
 {
   BYTE data = 0;
   
@@ -581,7 +583,7 @@ BYTE memory_read(int address)
   t_state();
 
   // Assert required signals
-  assert_signal(SIG_MREQ);
+  assert_signal(signal);
   assert_signal(SIG_RD);
 
   // Clock again
@@ -592,14 +594,14 @@ BYTE memory_read(int address)
   data = data_state();
 
   // De-assert control
-  deassert_signal(SIG_MREQ);
+  deassert_signal(signal);
   deassert_signal(SIG_RD);
 
   // All done, return data
   return(data);
 }
 
-void memory_write(int address, BYTE data)
+void write_cycle(int address, BYTE data, int signal)
 {
   // We drive the address bus and write the data bus
   addr_bus_outputs();
@@ -612,7 +614,7 @@ void memory_write(int address, BYTE data)
   t_state();
   
   // Assert required signals
-  assert_signal(SIG_MREQ);
+  assert_signal(signal);
   assert_signal(SIG_WR);
 
   // Clock again
@@ -631,7 +633,7 @@ void memory_write(int address, BYTE data)
   t_state();
   
   // De-assert control
-  deassert_signal(SIG_MREQ);
+  deassert_signal(signal);
 
   t_state();
   
@@ -639,7 +641,6 @@ void memory_write(int address, BYTE data)
   data_bus_inputs();
 
 }
-
 
 // Set the control up to use the Mega to control everything
 // This will allow us to single step and so on. It's a way to prevent
@@ -1554,6 +1555,7 @@ void cmd_memory(String cmd)
   boolean cmdloop = true;
   int address = 0;
   int working_address = 0;
+  int working_space = SIG_MREQ;
   
   // Grab the bus from the Z80 as we are going to do memory accesses ourselves
   bus_request();
@@ -1574,12 +1576,29 @@ void cmd_memory(String cmd)
       Serial.print("Working address: ");
       Serial.print(working_address, HEX);
 
+      Serial.print(" Space:");
+      switch(working_space)
+	{
+	case SIG_MREQ:
+	  Serial.print("MEM ");
+	  break;
+	  
+	case SIG_IOREQ:
+	  Serial.print("IO  ");
+	  break;
+	  
+	default:
+	  Serial.print("??? ");
+	  break;
+	}
+      
       Serial.print("");
 
       
       Serial.print(" Bus state:");
       Serial.println(bsm_state_name());
-      Serial.println(" (d:Display memory  A: Set address w:write byte)");
+      Serial.println(" (r:Display memory  A: Set address w:write byte)");
+      Serial.println(" (M:Mem space I:IO space)");
 
       Serial.println(" (return:next q:quit 1:assert reset 0:deassert reset d:dump regs f:Run forever)");
       
@@ -1596,21 +1615,29 @@ void cmd_memory(String cmd)
 	    {
 	      switch( Serial.read())
 		{
-		case 'd':
+		case 'r':
 		  // display memory at address
 		  address=working_address;
 		  for(int i=0; i<16; i++)
 		    {
 		      Serial.print(address, HEX);
 		      Serial.print("= ");
-		      Serial.println(memory_read(address), HEX);
+		      Serial.println(read_cycle(address, working_space), HEX);
 		      address++;
 		    }
 		  break;
 
 		case 'w':
 		  delay(100);
-		  memory_write(working_address, get_hex_parameter());
+		  write_cycle(working_address, get_hex_parameter(), working_space);
+		  break;
+
+		case 'M':
+		  working_space = SIG_MREQ;
+		  break;
+
+		case 'I':
+		  working_space = SIG_IOREQ;
 		  break;
 		  
 		case 'A':
