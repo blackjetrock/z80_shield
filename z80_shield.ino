@@ -61,7 +61,8 @@ const int RFSH_Pin    = 31;
 const int SW0_Pin     = 29;
 const int SW1_Pin     = 25;
 
-const int MAPREQ_Pin  = 0;
+const int MAPRQM_Pin  = 36;
+const int MAPRQI_Pin  = 38;
 
 const int address_pins[] =
   {
@@ -140,6 +141,8 @@ enum
     EV_A_WAIT,   EV_D_WAIT,
     EV_A_CLK,    EV_D_CLK,
     EV_A_RES,    EV_D_RES,
+    EV_A_MAPRQM, EV_D_MAPRQM,
+    EV_A_MAPRQI, EV_D_MAPRQI,
   };
 
 // IO addresses
@@ -195,6 +198,8 @@ struct
       {  "  WAIT", WAIT_Pin,   0, {{MODE_SLAVE, OUTPUT, HIGH}}, EV_A_WAIT, EV_D_WAIT},
       {  "   CLK", A_CLK_Pin,  0, {{MODE_SLAVE, OUTPUT, HIGH}}, EV_A_CLK, EV_D_CLK},
       {  "   RES", A_RES_Pin,  0, {{MODE_SLAVE, OUTPUT, HIGH}}, EV_A_RES, EV_D_RES},
+      {  "MAPRQM", MAPRQM_Pin, 0, {{MODE_SLAVE, OUTPUT, HIGH}}, EV_A_MAPRQM, EV_D_MAPRQM},
+      {  "MAPRQI", MAPRQI_Pin, 0, {{MODE_SLAVE, OUTPUT, LOW}},  EV_A_MAPRQI, EV_D_MAPRQI},
       {  "---",    0,          0, {{MODE_SLAVE, INPUT, HIGH}},  0, 0},
     };
 
@@ -1328,7 +1333,8 @@ void cmd_trace_test_code()
       int rd = signal_state("RD");
       int mreq = signal_state("MREQ");
       int ioreq = signal_state("IOREQ");
-
+      int maprqm = signal_state("MAPRQM");
+      
       if ( (rd == HIGH) )
 	{
 	  // Data bus back to inputs
@@ -1357,15 +1363,18 @@ void cmd_trace_test_code()
 	      cycle_type = CYCLE_MEM;
 	    }
 	  
-	  // Drive data bus
-	  data_bus_outputs();
-	  set_data_state(example_code[addr_state() & 0xff]);
-	  if ( !fast_mode )
+	  // Drive data bus if we have control of the memory map
+	  if ( maprqm == HIGH )
 	    {
-	      Serial.print("Putting data on bus ");
-	      Serial.print(addr_state(), HEX);
-	      Serial.print(" ");
-	      Serial.print(example_code[addr_state() & 0xff], HEX);
+	      data_bus_outputs();
+	      set_data_state(example_code[addr_state() & 0xff]);
+	      if ( !fast_mode )
+		{
+		  Serial.print("Putting data on bus ");
+		  Serial.print(addr_state(), HEX);
+		  Serial.print(" ");
+		  Serial.print(example_code[addr_state() & 0xff], HEX);
+		}
 	    }
 	}
       
@@ -1419,7 +1428,8 @@ void cmd_trace_test_code()
 	  
 	  Serial.print(" Bus state:");
 	  Serial.println(bsm_state_name());
-	  Serial.println(" (G:Grab Bus  R: release bus M:Mega control  F:Free run T:Drive n tstates) b:Breakpoint B:Toggle breakpoint");
+	  Serial.println(" (G:Grab Bus  R: release bus M:Mega control  F:Free run T:Drive n tstates) b:Breakpoint B:Toggle breakpoint)");
+	  Serial.println(" (I:Request IO Map i:Release IO map J:Request MEM Map j:Release MEM map)");
 	  Serial.println(" (return:next q:quit 1:assert reset 0:deassert reset d:dump regs f:Run forever)");
 	  
 	  while ( Serial.available() == 0)
@@ -1435,13 +1445,6 @@ void cmd_trace_test_code()
 		{
 		  switch( Serial.read())
 		    {
-		    case 'P':
-		      bus_request();
-		      
-		      // Write to PIO to set D10 as low (turns LCD backlight off)
-		      //write_io();
-		      break;
-
 		    case 'T':
 		      fast_mode = true;
 		      fast_mode_n = 100;
@@ -1478,6 +1481,22 @@ void cmd_trace_test_code()
 		      // Free run
 		      digitalWrite(SW0_Pin, LOW);
 		      digitalWrite(SW1_Pin, LOW);
+		      break;
+
+		    case 'I':
+		      digitalWrite(MAPRQI_Pin, HIGH);
+		      break;
+
+		    case 'i':
+		      digitalWrite(MAPRQI_Pin, LOW);
+		      break;
+
+		    case 'J':
+		      digitalWrite(MAPRQM_Pin, HIGH);
+		      break;
+
+		    case 'j':
+		      digitalWrite(MAPRQM_Pin, LOW);
 		      break;
 		      
 		    case 'G':
