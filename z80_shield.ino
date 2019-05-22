@@ -99,7 +99,8 @@ const int data_pins[] =
 // Z80 modes
 enum
   {
-    MODE_SLAVE,
+    MODE_SLAVE,          // Z80 as a slave, but bus master
+    MODE_MEGA_MASTER,    // Mega as bus master
     NUM_MODES,
   };
 
@@ -175,7 +176,7 @@ struct
     int     mode;        // Mode
     uint8_t mode_dir;    // The direction we set this line when in this mode
     uint8_t mode_val;    // Default value for this mode
-  } modes[1];
+  } modes[2];
   int     assert_ev;   // Assert event
   int     deassert_ev; // Deassert event
 }
@@ -185,22 +186,22 @@ struct
   signal_list[] =
 
     {
-      {  "BUSREQ", BUSREQ_Pin, 0, {{MODE_SLAVE, OUTPUT, HIGH}}, EV_A_BUSREQ, EV_D_BUSREQ},
-      {  "BUSACK", BUSACK_Pin, 0, {{MODE_SLAVE, INPUT, HIGH}},  EV_A_BUSACK, EV_D_BUSACK},
-      {  "  MREQ", MREQ_Pin,   0, {{MODE_SLAVE, INPUT, HIGH}},  EV_A_MREQ, EV_D_MREQ},
-      {  " IOREQ", IOREQ_Pin,  0, {{MODE_SLAVE, INPUT, HIGH}},  EV_A_IOREQ, EV_D_IOREQ},
-      {  "    WR", WR_Pin,     0, {{MODE_SLAVE, INPUT, HIGH}},  EV_A_WR, EV_D_WR},
-      {  "    RD", RD_Pin,     0, {{MODE_SLAVE, INPUT, HIGH}},  EV_A_RD, EV_D_RD},
-      {  "    M1", M1_Pin,     0, {{MODE_SLAVE, INPUT, HIGH}},  EV_A_M1, EV_D_M1},
-      {  "  RFSH", RFSH_Pin,   0, {{MODE_SLAVE, INPUT, HIGH}},  EV_A_RFSH, EV_D_RFSH},
-      {  "   NMI", NMI_Pin,    0, {{MODE_SLAVE, OUTPUT, HIGH}}, EV_A_NMI, EV_D_NMI},
-      {  "   INT", INT_Pin,    0, {{MODE_SLAVE, OUTPUT, HIGH}}, EV_A_INT, EV_D_INT},
-      {  "  WAIT", WAIT_Pin,   0, {{MODE_SLAVE, OUTPUT, HIGH}}, EV_A_WAIT, EV_D_WAIT},
-      {  "   CLK", A_CLK_Pin,  0, {{MODE_SLAVE, OUTPUT, HIGH}}, EV_A_CLK, EV_D_CLK},
-      {  "   RES", A_RES_Pin,  0, {{MODE_SLAVE, OUTPUT, HIGH}}, EV_A_RES, EV_D_RES},
-      {  "MAPRQM", MAPRQM_Pin, 0, {{MODE_SLAVE, OUTPUT, HIGH}}, EV_A_MAPRQM, EV_D_MAPRQM},
-      {  "MAPRQI", MAPRQI_Pin, 0, {{MODE_SLAVE, OUTPUT, LOW}},  EV_A_MAPRQI, EV_D_MAPRQI},
-      {  "---",    0,          0, {{MODE_SLAVE, INPUT, HIGH}},  0, 0},
+      {  "BUSREQ", BUSREQ_Pin, 0, {{MODE_SLAVE, OUTPUT, HIGH},{MODE_MEGA_MASTER, OUTPUT, LOW }}, EV_A_BUSREQ, EV_D_BUSREQ},
+      {  "BUSACK", BUSACK_Pin, 0, {{MODE_SLAVE, INPUT,  HIGH},{MODE_MEGA_MASTER, INPUT,  HIGH}},  EV_A_BUSACK, EV_D_BUSACK},
+      {  "  MREQ", MREQ_Pin,   0, {{MODE_SLAVE, INPUT,  HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}},  EV_A_MREQ, EV_D_MREQ},
+      {  " IOREQ", IOREQ_Pin,  0, {{MODE_SLAVE, INPUT,  HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}},  EV_A_IOREQ, EV_D_IOREQ},
+      {  "    WR", WR_Pin,     0, {{MODE_SLAVE, INPUT,  HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}},  EV_A_WR, EV_D_WR},
+      {  "    RD", RD_Pin,     0, {{MODE_SLAVE, INPUT,  HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}},  EV_A_RD, EV_D_RD},
+      {  "    M1", M1_Pin,     0, {{MODE_SLAVE, INPUT,  HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}},  EV_A_M1, EV_D_M1},
+      {  "  RFSH", RFSH_Pin,   0, {{MODE_SLAVE, INPUT,  HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}},  EV_A_RFSH, EV_D_RFSH},
+      {  "   NMI", NMI_Pin,    0, {{MODE_SLAVE, OUTPUT, HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}}, EV_A_NMI, EV_D_NMI},
+      {  "   INT", INT_Pin,    0, {{MODE_SLAVE, OUTPUT, HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}}, EV_A_INT, EV_D_INT},
+      {  "  WAIT", WAIT_Pin,   0, {{MODE_SLAVE, OUTPUT, HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}}, EV_A_WAIT, EV_D_WAIT},
+      {  "   CLK", A_CLK_Pin,  0, {{MODE_SLAVE, OUTPUT, HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}}, EV_A_CLK, EV_D_CLK},
+      {  "   RES", A_RES_Pin,  0, {{MODE_SLAVE, OUTPUT, HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}}, EV_A_RES, EV_D_RES},
+      {  "MAPRQM", MAPRQM_Pin, 0, {{MODE_SLAVE, OUTPUT, HIGH},{MODE_MEGA_MASTER, OUTPUT, LOW }}, EV_A_MAPRQM, EV_D_MAPRQM},
+      {  "MAPRQI", MAPRQI_Pin, 0, {{MODE_SLAVE, OUTPUT, LOW },{MODE_MEGA_MASTER, OUTPUT, LOW }},  EV_A_MAPRQI, EV_D_MAPRQI},
+      {  "---",    0,          0, {{MODE_SLAVE, INPUT,  HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}},  0, 0},
     };
 
 // Indices for signals
@@ -219,6 +220,8 @@ enum
     SIG_WAIT,
     SIG_CLK,
     SIG_RES,
+    SIG_MAPRQM,
+    SIG_MAPRQI,
   };
 
 
@@ -234,10 +237,10 @@ struct TRANSITION
 
 struct STATE
 {
-int        statenum;
-char       *state_name;
-FPTR       entry[NUM_ENTRY];
-TRANSITION trans[NUM_TRANS];
+  int        statenum;
+  char       *state_name;
+  FPTR       entry[NUM_ENTRY];
+  TRANSITION trans[NUM_TRANS];
 };
 
 int current_state;
@@ -476,7 +479,22 @@ void bus_request()
     }
   
   // We should have control of the bus now
+  // We put signals in bus control states
+  set_signals_to_mode(MODE_MEGA_MASTER);
+  
 }
+
+void bus_release()
+{
+  deassert_signal(SIG_BUSREQ);
+  
+  // Put bus signals back to slave mode
+  set_signals_to_mode(MODE_SLAVE);
+
+  addr_bus_inputs();
+  data_bus_inputs();
+}
+
 
 void addr_bus_inputs()
 {
@@ -542,6 +560,87 @@ void data_bus_outputs()
   pinMode ( D7_Pin , OUTPUT );
 }
 
+////////////////////////////////////////////////////////////////////////////////
+//
+// performs bus cycles to access devices etc
+//
+//
+////////////////////////////////////////////////////////////////////////////////
+
+BYTE memory_read(int address)
+{
+  BYTE data = 0;
+  
+  // We drive the address bus and read the data bus
+  addr_bus_outputs();
+
+  // Put address on bus
+  set_addr_state(address);
+
+  // Clock
+  t_state();
+
+  // Assert required signals
+  assert_signal(SIG_MREQ);
+  assert_signal(SIG_RD);
+
+  // Clock again
+  t_state();
+  t_state();
+
+  // read data
+  data = data_state();
+
+  // De-assert control
+  deassert_signal(SIG_MREQ);
+  deassert_signal(SIG_RD);
+
+  // All done, return data
+  return(data);
+}
+
+void memory_write(int address, BYTE data)
+{
+  // We drive the address bus and write the data bus
+  addr_bus_outputs();
+
+  // Put address on bus
+  set_addr_state(address);
+
+  // Clock
+  t_state();
+  t_state();
+  
+  // Assert required signals
+  assert_signal(SIG_MREQ);
+  assert_signal(SIG_WR);
+
+  // Clock again
+  t_state();
+  t_state();
+
+  // Set data up
+  data_bus_outputs();
+  set_data_state(data);
+
+  t_state();
+
+  // Latch data
+  deassert_signal(SIG_WR);  
+
+  t_state();
+  
+  // De-assert control
+  deassert_signal(SIG_MREQ);
+
+  t_state();
+  
+  // release data bus
+  data_bus_inputs();
+
+}
+
+
 // Set the control up to use the Mega to control everything
 // This will allow us to single step and so on. It's a way to prevent
 // contention on the bus when we start as well.
@@ -598,6 +697,26 @@ unsigned int addr_state()
     }
   
   return(a);  
+}
+
+// drive address bus
+void set_addr_state(int address)
+{
+  // Set all the address lines
+  for(int i=15; i>=0; i--)
+    {
+      // Add bit in
+      switch(address & (1 << i))
+	{
+	default:
+	  digitalWrite(address_pins[i], HIGH);
+	  break;
+
+	case 0:
+	  digitalWrite(address_pins[i], LOW);
+	  break;
+	}
+    }
 }
 
 // Returns data bus state, ie data on bus
@@ -1064,23 +1183,23 @@ BYTE example_code_lcd_bl_flash[] =
 
 BYTE example_code_ram[] =
   {
-0x16, 0x07,              //    LD   D,ENDCODE-RAMCODE   
-0x21, 0x00, 0x80,          //     LD   HL,8000H   
-0x01, 0x12, 0x00,  //             LD   BC,RAMCODE   
-          //   COPYLOOP:      
-0x0A,        //             LD   A,(BC)   
-0x77,        //             LD   (HL),A   
-0x23,        //             INC   HL   
-0x03,        //             INC   BC   
-0x15,        //             DEC   DE   
-0x20, 0xF9,     //             JR   NZ,COPYLOOP   
-0xC3, 0x00, 0x80,  //             JP   8000H   
-          //   RAMCODE:      
-0x21, 0x00, 0x81,  //             LD   HL,8100H   
-0x7E,        //   RLOOP:    LD   A,(HL)   
-0x23,        //             INC   HL   
-0x18, 0xFC,     //             JR   RLOOP   
-          //   ENDCODE:      
+    0x16, 0x07,              //    LD   D,ENDCODE-RAMCODE   
+    0x21, 0x00, 0x80,          //     LD   HL,8000H   
+    0x01, 0x12, 0x00,  //             LD   BC,RAMCODE   
+    //   COPYLOOP:      
+    0x0A,        //             LD   A,(BC)   
+    0x77,        //             LD   (HL),A   
+    0x23,        //             INC   HL   
+    0x03,        //             INC   BC   
+    0x15,        //             DEC   DE   
+    0x20, 0xF9,     //             JR   NZ,COPYLOOP   
+    0xC3, 0x00, 0x80,  //             JP   8000H   
+    //   RAMCODE:      
+    0x21, 0x00, 0x81,  //             LD   HL,8100H   
+    0x7E,        //   RLOOP:    LD   A,(HL)   
+    0x23,        //             INC   HL   
+    0x18, 0xFC,     //             JR   RLOOP   
+    //   ENDCODE:      
 
     
   };
@@ -1100,15 +1219,15 @@ struct
   const char *desc;
   BYTE  *code;
 }
-code_list[] =
-  {
-    {"Copy code to RAM and execute it", example_code_ram},
-    {"Write value to bank register",    example_code_bank},
-    {"Write then read RAM",             example_code_ram_chk},
-    {"Turn LCD shield backlight off",   example_code_lcd_bl_off},
-    {"Flash turn LCD shield backlight", example_code_lcd_bl_flash},
-    {"-",                               0},
-  };
+  code_list[] =
+    {
+      {"Copy code to RAM and execute it", example_code_ram},
+      {"Write value to bank register",    example_code_bank},
+      {"Write then read RAM",             example_code_ram_chk},
+      {"Turn LCD shield backlight off",   example_code_lcd_bl_off},
+      {"Flash turn LCD shield backlight", example_code_lcd_bl_flash},
+      {"-",                               0},
+    };
 
 // Current example code
 BYTE *example_code = example_code_ram;
@@ -1163,125 +1282,13 @@ enum {
 //
 ////////////////////////////////////////////////////////////////////////////////
 
-void cmd_run_test_code()
+void cmd_run_test_code(String cmd)
 {
-  boolean running = true;
-  int state = STATE_NONE;
-  int cycle_type = CYCLE_NONE;
-  int cycle_dir = CYCLE_DIR_NONE;
-  
-  // We have a logical address space for the array of code such that the code starts at
-  // 0000H, which is the reset vector
-
-  // reset Z80
-  reset_z80();
-
-  // Clock and monitor the bus signals to work out what to do
-  while( running )
-    {
-      // Half t states so we can examine all clock transitions
-      half_t_state();
-      delay(10);
-
-
-      //Update events
-      signal_scan();
-
-      // Now check for things we have to do
-      // We really only need respond to memory read/write and IO read/write
-
-      int wr = signal_state("WR");
-      int rd = signal_state("RD");
-      int mreq = signal_state("MREQ");
-      int ioreq = signal_state("IOREQ");
-      int m1 = signal_state("M1");
-
-      if ( (rd == HIGH) )
-	{
-	  // Data bus back to inputs
-	  data_bus_inputs();
-	}
-      
-      if ( (wr == LOW) && (mreq == LOW) )
-	{
-	  cycle_dir = CYCLE_DIR_WR;
-
-	  // Write cycle
-	  if (mreq == LOW )
-	    {
-	      cycle_type = CYCLE_MEM;
-	    }
-	}
-
-      // Read cycle, put data on the bus, based on address
-      if ( (rd == LOW) && (mreq == LOW))
-	{
-	  cycle_dir = CYCLE_DIR_RD;
-
-	  // Write cycle
-	  if (mreq == LOW )
-	    {
-	      cycle_type = CYCLE_MEM;
-	    }
-
-	  // Drive data bus
-	  data_bus_outputs();
-	  set_data_state(example_code[addr_state() & 0xff]);
-	  Serial.print(" ");
-	  Serial.print(addr_state(), HEX);
-	  Serial.print(": ");
-	  Serial.print(example_code[addr_state() & 0xff], HEX);
-	}
-
-      // Allow interaction
-      
-      Serial.println(" (G:Grab Bus  R: release bus)");
-      Serial.println(" (return:next q:quit 1:assert reset 0:deassert reset d:dump regs)");
-      
-      while ( Serial.available()==0)
-	{
-	}
-
-      boolean cmdloop = true;
-      
-      while( cmdloop )
-	{
-	  switch( Serial.read())
-	    {
-	      
-	    case 'G':
-	      bus_request();
-	      break;
-
-	    case 'R':
-	      deassert_signal(SIG_BUSREQ);
-	      break;
-	      
-	    case '1':
-	      assert_signal(SIG_RES);
-	      break;
-
-	    case '0':
-	      deassert_signal(SIG_RES);
-	      break;
-
-	    case 'q':
-	      running = false;
-	      cmdloop = false;
-	      break;
-	      
-	    case '\r':
-	      cmdloop = false;
-	      break;
-	    }
-	}
-      
-    }
 }
 
 // Traces test code at the t state level, all cycles are shown
 
-void cmd_trace_test_code()
+void cmd_trace_test_code(String cmd)
 {
   boolean running = true;
   int state = STATE_NONE;
@@ -1504,12 +1511,13 @@ void cmd_trace_test_code()
 		      break;
 		      
 		    case 'R':
-		      deassert_signal(SIG_BUSREQ);
+		      bus_release();
+
 		      break;
 		      
 		    case '1':
 		      assert_signal(SIG_RES);
-		  break;
+		      break;
 		  
 		    case '0':
 		      deassert_signal(SIG_RES);
@@ -1533,12 +1541,116 @@ void cmd_trace_test_code()
 
 ////////////////////////////////////////////////////////////////////////////////
 //
+// Memory monitor
+//
+//
+////////////////////////////////////////////////////////////////////////////////
+
+
+void cmd_memory(String cmd)
+{
+
+  boolean running = true;
+  boolean cmdloop = true;
+  int address = 0;
+  int working_address = 0;
+  
+  // Grab the bus from the Z80 as we are going to do memory accesses ourselves
+  bus_request();
+
+  // Enable both memory maps
+  assert_signal(SIG_MAPRQM);
+  assert_signal(SIG_MAPRQI);
+  
+  // Clock and monitor the bus signals to work out what to do
+  while( running )
+    {
+      cmd_dump_signals();
+
+      //Update events
+      signal_scan();
+
+      // Allow interaction
+      Serial.print("Working address: ");
+      Serial.print(working_address, HEX);
+
+      Serial.print("");
+
+      
+      Serial.print(" Bus state:");
+      Serial.println(bsm_state_name());
+      Serial.println(" (d:Display memory  A: Set address w:write byte)");
+
+      Serial.println(" (return:next q:quit 1:assert reset 0:deassert reset d:dump regs f:Run forever)");
+      
+      while ( Serial.available() == 0)
+	{
+	}
+      Serial.println(Serial.available());
+
+      cmdloop=true;
+
+      while( cmdloop )
+	{
+	  if( Serial.available() > 0 )
+	    {
+	      switch( Serial.read())
+		{
+		case 'd':
+		  // display memory at address
+		  address=working_address;
+		  for(int i=0; i<16; i++)
+		    {
+		      Serial.print(address, HEX);
+		      Serial.print("= ");
+		      Serial.println(memory_read(address), HEX);
+		      address++;
+		    }
+		  break;
+
+		case 'w':
+		  delay(100);
+		  memory_write(working_address, get_hex_parameter());
+		  break;
+		  
+		case 'A':
+		  // Set address to manipulate
+		  delay(100);
+		  working_address = get_hex_parameter();
+
+		  cmdloop=false;
+		  break;
+		  
+		case 'q':
+		  running = false;
+		  cmdloop = false;
+		  break;
+		      
+		case '\r':
+		  cmdloop = false;
+		  break;
+		}
+	    }
+	  
+	}
+    }
+
+  addr_bus_inputs();
+  data_bus_inputs();
+
+  //Release bus
+  bus_release();
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+//
 // Command Table
 //
 ////////////////////////////////////////////////////////////////////////////////
 
 // Null cmd function
-void cmd_dummy()
+void cmd_dummy(String cmd)
 {
 }
 
@@ -1553,6 +1665,7 @@ struct
     {"t",         cmd_trace_test_code},
     {"l",         cmd_show_example_code},
     {"s",         cmd_set_example_code},
+    {"m",         cmd_memory},
     {"---",       cmd_dummy},
   };
 
