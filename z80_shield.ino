@@ -16,6 +16,9 @@ typedef void (*CMD_FPTR)(String cmd);
 
 #define VERTICAL_LABELS  0
 
+#define FLASH_ERASE_SECTOR_CMD  0x30
+#define FLASH_ERASE_CHIP_CMD    0x10
+
 // Pin definitions
 
 const int D0_Pin      = 21;
@@ -640,6 +643,53 @@ void write_cycle(int address, BYTE data, int signal)
   // release data bus
   data_bus_inputs();
 
+}
+
+////////////////////////////////////////////////////////////////////////////////
+//
+// Flash utilities
+//
+//
+
+// Writes a byte to the flash at a particular address in a given bank
+void flash_write_byte(int bank, int addr, BYTE data)
+{
+  // Set bank up
+  write_cycle(IO_ADDR_BANK, bank, SIG_IOREQ);
+
+  // Perform flash write cycle
+  write_cycle(0x5555, 0xAA, SIG_MREQ);
+  write_cycle(0x2AAA, 0x55, SIG_MREQ);
+  write_cycle(0x5555, 0xA0, SIG_MREQ);
+  write_cycle(addr, data, SIG_MREQ);
+
+  // We need to poll for completion D7 will be the D7 of the data 
+  // byte we just wrote when the program completes.
+  while( (read_cycle(addr, SIG_MREQ) & 0x80) != (data & 0x80) )
+    {
+    }
+
+  // All done
+}
+
+// Erase sector
+void flash_erase(int cmd, int sector)
+{
+  // Perform flash erase cycle
+  write_cycle(0x5555, 0xAA, SIG_MREQ);
+  write_cycle(0x2AAA, 0x55, SIG_MREQ);
+  write_cycle(0x5555, 0x80, SIG_MREQ);
+  write_cycle(0x5555, 0xAA, SIG_MREQ);
+  write_cycle(0x2AAA, 0x55, SIG_MREQ);
+  write_cycle(0x5555, cmd, SIG_MREQ);
+
+  // We need to poll for completion D7 will be the D7 of the data 
+  // byte we just wrote when the program completes.
+  while( (read_cycle(0, SIG_MREQ) & 0x80) != 0x80 )
+    {
+    }
+
+  // All done
 }
 
 // Set the control up to use the Mega to control everything
@@ -1542,10 +1592,18 @@ void cmd_trace_test_code(String cmd)
 
 ////////////////////////////////////////////////////////////////////////////////
 //
+// Flash menu
+//
+////////////////////////////////////////////////////////////////////////////////
+
+
+////////////////////////////////////////////////////////////////////////////////
+//
 // Memory monitor
 //
 //
 ////////////////////////////////////////////////////////////////////////////////
+
 
 
 void cmd_memory(String cmd)
