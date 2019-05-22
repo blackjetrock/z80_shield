@@ -1617,14 +1617,25 @@ void cmd_memory(String cmd)
 		{
 		case 'r':
 		  // display memory at address
+		  char ads[10];
+		  BYTE d;
 		  address=working_address;
-		  for(int i=0; i<16; i++)
+		  for(int i=0; i<256; i++)
 		    {
-		      Serial.print(address, HEX);
-		      Serial.print("= ");
-		      Serial.println(read_cycle(address, working_space), HEX);
+		      if( (i%16)==0)
+			{
+			  Serial.println("");
+
+			  sprintf(ads, "%04X", address);
+			  Serial.print(ads);
+			  Serial.print(": ");
+			}
+		      d = read_cycle(address, working_space);
+		      sprintf(ads, "%02X ", d);
+		      Serial.print(ads);
 		      address++;
 		    }
+		  Serial.println("");
 		  break;
 
 		case 'w':
