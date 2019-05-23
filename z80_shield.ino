@@ -415,6 +415,16 @@ char *to_hex(int value, int numdig)
   return(hexbuf);
 }
 
+void flush_serial()
+{
+  delay(100);
+  while(Serial.available() )
+    {
+      Serial.read();
+    }
+  
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 //
 // Utility functions
@@ -594,6 +604,7 @@ BYTE read_cycle(int address, int signal)
   t_state();
 
   // read data
+  data_bus_inputs();
   data = data_state();
 
   // De-assert control
@@ -651,6 +662,36 @@ void write_cycle(int address, BYTE data, int signal)
 //
 //
 
+void flash_wait_done(int bit_value)
+{
+  data_bus_inputs();
+  int d6 = 0;
+  int old_d6 = 0;
+  int data = 0;
+
+  // We have to select the flash chip and enable outputs
+  
+  // Do a read of he flash chip
+  data = read_cycle(0, SIG_MREQ);
+	
+  while( (data & 0x80) != bit_value )
+    {
+      data = read_cycle(0, SIG_MREQ);
+
+      d6 = (data & 0x40);
+      if( d6 != old_d6 )
+	{
+	}
+      old_d6 = d6;
+      
+      if( Serial.available() )
+	{
+	  Serial.println("Keypress break");
+	  break;
+	}
+    }
+}
+
 // Writes a byte to the flash at a particular address in a given bank
 void flash_write_byte(int bank, int addr, BYTE data)
 {
@@ -663,11 +704,8 @@ void flash_write_byte(int bank, int addr, BYTE data)
   write_cycle(0x5555, 0xA0, SIG_MREQ);
   write_cycle(addr, data, SIG_MREQ);
 
-  // We need to poll for completion D7 will be the D7 of the data 
-  // byte we just wrote when the program completes.
-  while( (read_cycle(addr, SIG_MREQ) & 0x80) != (data & 0x80) )
-    {
-    }
+  // We just wrote when the program completes.
+  flash_wait_done(data & 0x80);
 
   // All done
 }
@@ -683,12 +721,9 @@ void flash_erase(int cmd, int sector)
   write_cycle(0x2AAA, 0x55, SIG_MREQ);
   write_cycle(0x5555, cmd, SIG_MREQ);
 
-  // We need to poll for completion D7 will be the D7 of the data 
-  // byte we just wrote when the program completes.
-  while( (read_cycle(0, SIG_MREQ) & 0x80) != 0x80 )
-    {
-    }
-
+  // Wait for completion
+  flash_wait_done(0x80);
+  
   // All done
 }
 
@@ -1229,6 +1264,54 @@ BYTE example_code_lcd_bl_flash[] =
 
   };
 
+BYTE example_code_lcd_slow_flash[] =
+  {
+                                         //   0000 : IO_ADDR_PIO0:   EQU   80H   
+                                         //   0000 : IO_ADDR_PIO0_AD:   EQU   IO_ADDR_PIO0+0   
+                                         //   0000 : IO_ADDR_PIO0_BD:   EQU   IO_ADDR_PIO0+1   
+                                         //   0000 : IO_ADDR_PIO0_AC:   EQU   IO_ADDR_PIO0+2   
+                                         //   0000 : IO_ADDR_PIO0_BC:   EQU   IO_ADDR_PIO0+3   
+                                         //   0000 : IO_ADDR_PIO1:   EQU   80H   
+                                         //   0000 : IO_ADDR_PIO1_AD:   EQU   IO_ADDR_PIO1+0   
+                                         //   0000 : IO_ADDR_PIO1_BD:   EQU   IO_ADDR_PIO1+1   
+                                         //   0000 : IO_ADDR_PIO1_AC:   EQU   IO_ADDR_PIO1+2   
+                                         //   0000 : IO_ADDR_PIO1_BC:   EQU   IO_ADDR_PIO1+3   
+                                         //   0000 : .ORG   0   
+                    0x31,  0x00,  0x90,  //   0000 : LD   SP,9000H   
+                                         //   0003 : ; 
+                           0x0E,  0x83,  //   0003 : START:    LD   C,IO_ADDR_PIO1_BC   
+                           0x3E,  0xCF,  //   0005 : LD   A,0CFH   
+                           0xED,  0x79,  //   0007 : OUT   (C),A   
+                           0x0E,  0x83,  //   0009 : LD   C,IO_ADDR_PIO1_BC   
+                           0x3E,  0xFB,  //   000B : LD   A,0FBH   
+                           0xED,  0x79,  //   000D : OUT   (C),A   
+                           0x0E,  0x83,  //   000F : LD   C,IO_ADDR_PIO1_BC   
+                           0x3E,  0x00,  //   0011 : LD   A,00H   
+                           0xED,  0x79,  //   0013 : OUT   (C),A   
+                    0xCD,  0x2F,  0x00,  //   0015 : CALL   DELAY   
+                                         //   0018 : ; 
+                           0x0E,  0x83,  //   0018 : LD   C,IO_ADDR_PIO1_BC   
+                           0x3E,  0xCF,  //   001A : LD   A,0CFH   
+                           0xED,  0x79,  //   001C : OUT   (C),A   
+                           0x0E,  0x83,  //   001E : LD   C,IO_ADDR_PIO1_BC   
+                           0x3E,  0xFF,  //   0020 : LD   A,0FFH   
+                           0xED,  0x79,  //   0022 : OUT   (C),A   
+                           0x0E,  0x83,  //   0024 : LD   C,IO_ADDR_PIO1_BC   
+                           0x3E,  0x00,  //   0026 : LD   A,00H   
+                           0xED,  0x79,  //   0028 : OUT   (C),A   
+                    0xCD,  0x2F,  0x00,  //   002A : CALL   DELAY   
+                                         //   002D : ; 
+                           0x18,  0xD4,  //   002D : JR   START   
+                           0x26,  0xFF,  //   002F : DELAY:    LD   H,0FFH   
+                                         //   0031 : ; 
+                           0x2E,  0x2F,  //   0031 : LOOPH:    LD   L,0FFH   
+                                  0x2D,  //   0033 : LOOPL:    DEC   L   
+                           0x20,  0xFD,  //   0034 : JR   NZ,LOOPL   
+                           0x25,         //   0036 : H   
+                           0x20,  0xF8,  //   0037 : JR   NZ,LOOPH   
+                                  0xC9,  //   0039 : RET      
+  };
+
 // Writes some code to RAM then jumps to it
 // Code can then be free run
 
@@ -1269,30 +1352,35 @@ struct
 {
   const char *desc;
   BYTE  *code;
+  int length;
 }
   code_list[] =
     {
-      {"Copy code to RAM and execute it", example_code_ram},
-      {"Write value to bank register",    example_code_bank},
-      {"Write then read RAM",             example_code_ram_chk},
-      {"Turn LCD shield backlight off",   example_code_lcd_bl_off},
-      {"Flash turn LCD shield backlight", example_code_lcd_bl_flash},
-      {"-",                               0},
+      {"Copy code to RAM and execute it", example_code_ram,          sizeof(example_code_ram)},
+      {"Write value to bank register",    example_code_bank,         sizeof(example_code_bank)},
+      {"Write then read RAM",             example_code_ram_chk,      sizeof(example_code_ram_chk)},
+      {"Turn LCD shield backlight off",   example_code_lcd_bl_off,   sizeof(example_code_lcd_bl_off)},
+      {"Flash turn LCD shield backlight", example_code_lcd_bl_flash, sizeof(example_code_lcd_bl_flash)},
+      {"Slow Flash turn LCD shield backlight", example_code_lcd_slow_flash, sizeof(example_code_lcd_slow_flash)},
+      {"-",                               0,                         0},
     };
 
 // Current example code
 BYTE *example_code = example_code_ram;
-
+int example_code_length = sizeof(example_code_ram);
 
 void cmd_set_example_code(String cmd)
 {
   String arg = cmd.substring(1);
 
   int code_i = arg.toInt();
-  example_code= code_list[code_i].code;
+  example_code        = code_list[code_i].code;
+  example_code_length = code_list[code_i].length;
   
   Serial.print("Example code now '");
   Serial.print(code_list[code_i].desc);
+  Serial.print("  len:");
+  Serial.print(example_code_length);
   Serial.println("'");
 }
 
@@ -1655,10 +1743,10 @@ void cmd_memory(String cmd)
       
       Serial.print(" Bus state:");
       Serial.println(bsm_state_name());
-      Serial.println(" (r:Display memory  A: Set address w:write byte)");
-      Serial.println(" (M:Mem space I:IO space)");
+      Serial.println(" (r:Display memory  a: Set address w:write byte e:Erase flash sector E:Erase chip)");
+      Serial.println(" (m:Mem space i:IO space b:Set bank X:write example code to 0000 Y:write code to all banks)");
 
-      Serial.println(" (return:next q:quit 1:assert reset 0:deassert reset d:dump regs f:Run forever)");
+      Serial.println(" (return:next q:quit)");
       
       while ( Serial.available() == 0)
 	{
@@ -1701,20 +1789,68 @@ void cmd_memory(String cmd)
 		  write_cycle(working_address, get_hex_parameter(), working_space);
 		  break;
 
-		case 'M':
+		case 'm':
 		  working_space = SIG_MREQ;
 		  break;
 
-		case 'I':
+		case 'i':
 		  working_space = SIG_IOREQ;
 		  break;
 		  
-		case 'A':
+		case 'a':
 		  // Set address to manipulate
 		  delay(100);
 		  working_address = get_hex_parameter();
 
 		  cmdloop=false;
+		  break;
+
+		case 'b':
+		  // Write a bank value to bank register
+		  delay(100);
+
+		  write_cycle(IO_ADDR_BANK, get_hex_parameter(), SIG_IOREQ);
+		  cmdloop=false;
+		  break;
+
+		case 'e':
+		  // Erase a sector
+		  delay(100);
+
+		  Serial.println("Starting erase...");
+		  flash_erase(FLASH_ERASE_SECTOR_CMD, get_hex_parameter());
+		  Serial.println("done.");
+		  cmdloop=false;
+		  break;
+
+		case 'E':
+		  flush_serial();
+		  
+		  // Erase a sector
+		  Serial.println("Starting chip erase...");
+		  flash_erase(FLASH_ERASE_CHIP_CMD, 0x5555);
+		  Serial.println("done.");
+		  cmdloop=false;
+		  break;
+
+		case 'X':
+		  // Take the example code and write it to flash
+		  for(int i=0; i<example_code_length; i++)
+		    {
+		      flash_write_byte(0, i, example_code[i]);
+		    }
+		  break;
+
+		case 'Y':
+		  // Take the example code and write it to all banks of flash 
+		  for(int b=0; b<16;b++)
+		    {
+
+		      for(int i=0; i<example_code_length; i++)
+			{
+			  flash_write_byte(b, i, example_code[i]);
+			}
+		    }
 		  break;
 		  
 		case 'q':
