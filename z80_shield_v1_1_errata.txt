@@ -26,5 +26,13 @@ Fixed above on V1.2 PCB
 13. 74ls138 enables not connected
 14. MAPREQ signal needed
 15. Better oscillator may be needed
-16. Move Z80 up a bit
+16. Move Z80 up a bit/arduino down
 17. crystal needs better space
+18. Better reset circuit
+19. MAPRQI for IO space
+20. MAPRQM for memory space
+21.pullups/down on mapreq pins for stand alone operation
+22. USB power socket
+23. Vref on A/d
+24. 74LS138 for memory address decode.
+25 PIO CEs shorted together

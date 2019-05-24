@@ -3,15 +3,22 @@
 // Serial monitor based control program
 //
 
-void run_bsm(int stim);
-char * bsm_state_name();
-
-// Run in quiet mode
-boolean quiet = false;
-
 typedef unsigned char BYTE;
 typedef void (*FPTR)();
 typedef void (*CMD_FPTR)(String cmd);
+
+void run_bsm(int stim);
+char * bsm_state_name();
+unsigned int addr_state();
+unsigned int data_state();
+
+// Run in quiet mode
+boolean quiet = false;
+boolean fast_mode = false;       // Skip all output and interaction
+
+// Current example code
+BYTE *example_code;
+int example_code_length;
 
 
 #define VERTICAL_LABELS  0
@@ -258,6 +265,13 @@ enum
     STATE_OP5,
     STATE_RFSH1,
     STATE_RFSH2,
+    STATE_MEM1,
+    STATE_MEM_RD,
+    STATE_MEM_WR,
+    STATE_MEM_WR_END,
+    STATE_MEM_RD_END,
+    
+    
     STATE_NUM
   };
 
@@ -308,6 +322,7 @@ const STATE bsm[] =
       },
       {
 	{EV_A_M1,   STATE_OP1},
+	{EV_A_MREQ, STATE_MEM1},
 	{EV_A_RFSH, STATE_RFSH1},
       }
     },
@@ -323,9 +338,9 @@ const STATE bsm[] =
     },
     { 
       STATE_OP2,
-      "Opcode 2",
+      "Opcode Memory Access",
       {
-	entry_null,
+	entry_mem1,
       },
       {
 	{EV_A_RD, STATE_OP3},
@@ -333,19 +348,20 @@ const STATE bsm[] =
     },
     { 
       STATE_OP3,
-      "Opcode 3",
+      "Opcode Read",
       {
-	entry_opcode3,
+	// same as a memory access
+	entry_mem_rd,
       },
       {
-	{EV_D_M1, STATE_IDLE},
+	{EV_D_RD, STATE_OP4},
       }
     },
     { 
       STATE_OP4,
-      "Opcode 4",
+      "Opcode Read End",
       {
-	entry_null,
+	entry_mem_rd_end,
       },
       {
 	{EV_D_M1, STATE_IDLE},
@@ -371,14 +387,130 @@ const STATE bsm[] =
 	{EV_D_RFSH, STATE_IDLE},
       }
     },
+    //------------------------------------------------------------------------------
+    // Memory accesses
+    //
+    // We may want to enable the RAM chip if there's an access to there
+    //
+    { 
+      STATE_MEM1,
+      "Memory Access",
+      {
+	entry_mem1,
+      },
+      {
+	{EV_A_RD, STATE_MEM_RD},
+	{EV_A_WR, STATE_MEM_WR},
+      }
+    },
+    { 
+      STATE_MEM_RD,
+      "Memory Read Access",
+      {
+	entry_mem_rd,
+      },
+      {
+	{EV_D_MREQ, STATE_MEM_RD_END},
+      }
+    },
+    { 
+      STATE_MEM_WR,
+      "Memory Write Access",
+      {
+	entry_null,
+      },
+      {
+	{EV_D_MREQ, STATE_MEM_WR_END},
+      }
+    },
+    { 
+      STATE_MEM_RD_END,
+      "Memory Read Access END",
+      {
+	entry_mem_rd_end,
+      },
+      {
+	{EV_D_RD, STATE_IDLE},
+      }
+    },
+    { 
+      STATE_MEM_WR_END,
+      "Memory Write Access End",
+      {
+	entry_null,
+      },
+      {
+	{EV_D_WR, STATE_IDLE},
+      }
+    },
   };
 
 void entry_null()
 {
-  if (!quiet )
+}
+
+void entry_mem1()
+{
+  Serial.println("mem1");
+  
+  // If the address is in the range of the RAM chip then we enableit.
+  // This is because the Mega doesn't really have enough memory to emulate the RAM, so we use the real chip
+  if ( addr_state() >= 0x8000 )
     {
-      Serial.print("State: ");
-      Serial.println(bsm_state_name());
+      // It is a RAM access
+      // Enable the memory map for a while
+
+      // We don't drive the bus
+      data_bus_inputs();
+      
+      // Turn memory map back on
+      digitalWrite(MAPRQM_Pin, LOW);
+
+      if ( !fast_mode )
+	{
+	  Serial.print("Allowing RAM to put data on bus");
+	  Serial.print(addr_state(), HEX);
+	  Serial.print(": ");
+	  Serial.print(data_state(), HEX);
+	}
+    }
+
+    // If it's a flash access then we will drive data if WR is asserted
+}
+
+// Memory read cycle
+void entry_mem_rd()
+{
+  Serial.print("entry_mem_rd");
+  
+  // We get data from either the example code (flash) or our emulated RAM
+  if ( addr_state() < 0x8000 )
+    {
+      // Emulate flash
+      data_bus_outputs();
+      
+      set_data_state(example_code[addr_state() & 0xff]);
+
+      if ( !fast_mode )
+	{
+	  Serial.print("Putting data on bus ");
+	  Serial.print(addr_state(), HEX);
+	  Serial.print(" ");
+	  Serial.print(example_code[addr_state() & 0xff], HEX);
+	}
+    }
+}
+
+void entry_mem_rd_end()
+{
+  // release the data bus, either if we have driven it or the RAm chip has, it makes no difference
+  data_bus_inputs();
+
+  // release the memory map
+  if (addr_state() >= 0x8000)
+    {
+      // Turn memory off
+      digitalWrite(MAPRQM_Pin, HIGH);
     }
 }
 
@@ -1134,6 +1266,13 @@ void run_bsm(int stim)
 	  int next_state = bsm[current_state_i].trans[i].next_state;
 
 	  current_state = next_state;
+	  current_state_i = find_state_index(current_state);
+	  
+	  if (!quiet )
+	    {
+	      Serial.print("State: ");
+	      Serial.println(bsm_state_name());
+	    }
 
 	  for(int j=0; j<NUM_ENTRY; j++)
 	    {
@@ -1143,6 +1282,7 @@ void run_bsm(int stim)
 		  (*fn)();
 		}
 	    }
+	  break;
 	}
     }
 }
@@ -1242,27 +1382,51 @@ BYTE example_code_lcd_bl_off[] =
 // Turns backlight off
 BYTE example_code_lcd_bl_flash[] =
   {
-    0x0e, IO_ADDR_PIO1_BC,    // LOOP:   LD C, 60H
-    0x3e, 0xcf,            //         LD  A, Mode3 control word
-    0xed, 0x79,            //         OUT (C), A
-    0x0e, IO_ADDR_PIO1_BC,    // LOOP:   LD C, 60H
-    0x3e, 0xFB,            //         LD  A, Only B2 as output
-    0xed, 0x79,            //         OUT (C), A
-    0x0e, IO_ADDR_PIO1_BD,    // LOOP:   LD C, 60H
-    0x3e, 0x00,            //         LD  A, All output set to 0
-    0xed, 0x79,            //         OUT (C), A
-    0x0e, IO_ADDR_PIO1_BC,    // LOOP:   LD C, 60H
-    0x3e, 0xcf,            //         LD  A, Mode3 control word
-    0xed, 0x79,            //         OUT (C), A
-    0x0e, IO_ADDR_PIO1_BC,    // LOOP:   LD C, 60H
-    0x3e, 0xFF,            //         LD  A, Only B2 as output
-    0xed, 0x79,            //         OUT (C), A
-    0x0e, IO_ADDR_PIO1_BD,    // LOOP:   LD C, 60H
-    0x3e, 0x00,            //         LD  A, All output set to 0
-    0xed, 0x79,            //         OUT (C), A
-    0xc3, 0x0, 0x00
-
+                    0x31,  0x00,  0x90,  //   0000 : 			LD SP, 9000H 
+                           0x0e,  0x83,  //   0003 : 		START:	LD C, IO_ADDR_PIO1_BC 
+                           0x3e,  0xcf,  //   0005 : 			LD A, 0CFH 
+                           0xed,  0x79,  //   0007 : 			OUT (C),A 
+                           0x0e,  0x83,  //   0009 : 			LD C, IO_ADDR_PIO1_BC 
+                           0x3e,  0xfb,  //   000b : 			LD A, 0FBH 
+                           0xed,  0x79,  //   000d : 			OUT (C),A 
+                           0x0e,  0x83,  //   000f : 			LD C, IO_ADDR_PIO1_BC 
+                           0x3e,  0x00,  //   0011 : 			LD A, 00H 
+                           0xed,  0x79,  //   0013 : 			OUT (C),A 
+                           0x0e,  0x83,  //   0015 : 			LD C, IO_ADDR_PIO1_BC 
+                           0x3e,  0xcf,  //   0017 : 			LD A, 0CFH 
+                           0xed,  0x79,  //   0019 : 			OUT (C),A 
+                           0x0e,  0x83,  //   001b : 			LD C, IO_ADDR_PIO1_BC 
+                           0x3e,  0xff,  //   001d : 			LD A, 0FFH 
+                           0xed,  0x79,  //   001f : 			OUT (C),A 
+                           0x0e,  0x83,  //   0021 : 			LD C, IO_ADDR_PIO1_BC 
+                           0x3e,  0x00,  //   0023 : 			LD A, 00H 
+                           0xed,  0x79,  //   0025 : 			OUT (C),A 
+                           0x18,  0xda,  //   0027 : 			JR START 
   };
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 BYTE example_code_lcd_slow_flash[] =
   {
@@ -1346,6 +1510,136 @@ BYTE example_code_bank[] =
     0xc3, 0x05, 0x00
   };
 
+BYTE example_code_lcd_test[] =
+  {
+                    0x31,  0x00,  0x90,  //   0000 : 		START:	LD  SP, 9000H 
+                           0x0e,  0x82,  //   0003 : 			LD   C, IO_ADDR_PIO1_AC 
+                           0x16,  0x80,  //   0005 : 			LD   D, IO_ADDR_PIO1_AD 
+                           0x26,  0x0f,  //   0007 : 			LD   H, 0FH 
+                           0x2e,  0x00,  //   0009 : 			LD   L, 00H 
+                    0xcd,  0x5d,  0x00,  //   000b : 			CALL PIOINIT 
+                           0x0e,  0x83,  //   000e : 			LD   C, IO_ADDR_PIO1_BC 
+                           0x16,  0x81,  //   0010 : 			LD   D, IO_ADDR_PIO1_BD 
+                           0x26,  0xfc,  //   0012 : 			LD   H, 0FCH 
+                           0x2e,  0x00,  //   0014 : 			LD   L, 00H 
+                    0xcd,  0x5d,  0x00,  //   0016 : 			CALL PIOINIT 
+                           0x3e,  0x00,  //   0019 : 			LD   A, 0 
+                    0x32,  0x00,  0xa0,  //   001b : 			LD   (SHADOW_A), A 
+                           0x3e,  0x00,  //   001e : 			LD   A, 0 
+                    0x32,  0x01,  0xa0,  //   0020 : 			LD   (SHADOW_B), A 
+                    0xcd,  0x77,  0x00,  //   0023 : 			CALL RS_HIGH 
+                    0xcd,  0x85,  0x00,  //   0026 : 			CALL E_LOW 
+                    0xcd,  0x52,  0x00,  //   0029 : 		  	CALL DELAY 
+                           0x16,  0x02,  //   002c : 			LD   D, 02H 
+                    0xcd,  0xd1,  0x00,  //   002e : 			CALL SDATA4 
+                    0xcd,  0x52,  0x00,  //   0031 : 			CALL DELAY 
+                           0x16,  0x02,  //   0034 : 			LD   D, 02H 
+                    0xcd,  0xd1,  0x00,  //   0036 : 			CALL SDATA4 
+                    0xcd,  0x52,  0x00,  //   0039 : 			CALL DELAY 
+                           0x16,  0x02,  //   003c : 			LD   D, 02H 
+                    0xcd,  0xd1,  0x00,  //   003e : 			CALL SDATA4 
+                           0x16,  0x02,  //   0041 : 			LD   D, 02H 
+                    0xcd,  0xd1,  0x00,  //   0043 : 			CALL SDATA4 
+                           0x16,  0x28,  //   0046 : 			LD   D, 28H 
+                    0xcd,  0xa1,  0x00,  //   0048 : 			CALL SDATA8 
+                           0x16,  0x0f,  //   004b : 		        LD   D, 0FH 
+                    0xcd,  0xa1,  0x00,  //   004d : 			CALL SDATA8 
+                           0x18,  0xae,  //   0050 : 		LOOP:	JR   START 
+                           0x26,  0xff,  //   0052 : 		DELAY:    LD   H,0FFH    
+                           0x2e,  0xff,  //   0054 : 		LOOPH:    LD   L,0FFH    
+                                  0x2d,  //   0056 : 			LOOPL:    DEC   L    
+                           0x20,  0xfd,  //   0057 : 		          JR   NZ,LOOPL    
+                                  0x25,  //   0059 : 			          DEC   H    
+                           0x20,  0xf8,  //   005a : 		          JR   NZ,LOOPH    
+                                  0xc9,  //   005c : 			          RET       
+                           0x3e,  0xcf,  //   005d : 			LD A, 0CFH 
+                           0xed,  0x79,  //   005f : 			OUT (C), A 
+                                  0x7c,  //   0061 : 				LD A, H 
+                           0xed,  0x79,  //   0062 : 			OUT (C), A 
+                                  0x7d,  //   0064 : 				LD A, L 
+                                  0x4a,  //   0065 : 				LD C, D 
+                           0xed,  0x79,  //   0066 : 			OUT (C), A 
+                                  0xc9,  //   0068 : 				RET 
+                                  0xc5,  //   0069 : 			RS_LOW:PUSh   BC 
+                           0x0e,  0x81,  //   006a : 			LD    C, IO_ADDR_PIO1_BD 
+                    0x2a,  0x01,  0xa0,  //   006c : 			LD    HL,(SHADOW_B) 
+                                  0x7e,  //   006f : 				LD    A, (HL) 
+                           0xcb,  0x87,  //   0070 : 			RES   0, A 
+                                  0x77,  //   0072 : 				LD    (HL), A 
+                           0xed,  0x79,  //   0073 : 			OUT   (C), A 
+                                  0xc1,  //   0075 : 				POp   BC 
+                                  0xc9,  //   0076 : 				RET 
+                                  0xc5,  //   0077 : 			RS_HIGH:PUSH  BC 
+                           0x0e,  0x81,  //   0078 : 		        LD    C, IO_ADDR_PIO1_BD 
+                    0x2a,  0x01,  0xa0,  //   007a : 			LD    HL,(SHADOW_B) 
+                                  0x7e,  //   007d : 				LD    A, (HL) 
+                           0xcb,  0xc7,  //   007e : 			SET   0, A 
+                                  0x77,  //   0080 : 				LD    (HL), A 
+                           0xed,  0x79,  //   0081 : 			OUT   (C), A 
+                                  0xc1,  //   0083 : 				POP   BC 
+                                  0xc9,  //   0084 : 				RET 
+                                  0xc5,  //   0085 : 			E_LOW:  PUSH  BC 
+                           0x0e,  0x81,  //   0086 : 			LD    C, IO_ADDR_PIO1_BD 
+                    0x2a,  0x01,  0xa0,  //   0088 : 			LD    HL,(SHADOW_B) 
+                                  0x7e,  //   008b : 				LD    A, (HL) 
+                           0xcb,  0x8f,  //   008c : 			RES   1, A 
+                                  0x77,  //   008e : 				LD    (HL), A 
+                           0xed,  0x79,  //   008f : 			OUT   (C), A 
+                                  0xc1,  //   0091 : 				POP   BC 
+                                  0xc9,  //   0092 : 				RET 
+                                  0xc5,  //   0093 : 			E_HIGH: PUSH BC 
+                           0x0e,  0x81,  //   0094 : 			LD    C, IO_ADDR_PIO1_BD 
+                    0x2a,  0x01,  0xa0,  //   0096 : 			LD    HL,(SHADOW_B) 
+                                  0x7e,  //   0099 : 				LD    A, (HL) 
+                           0xcb,  0xcf,  //   009a : 			SET   1, A 
+                                  0x77,  //   009c : 				LD    (HL), A 
+                           0xed,  0x79,  //   009d : 			OUT   (C), A 
+                                  0xc1,  //   009f : 				POP   BC 
+                                  0xc9,  //   00a0 : 				RET 
+                    0xcd,  0x69,  0x00,  //   00a1 : 			CALL  RS_LOW 
+                    0xcd,  0x93,  0x00,  //   00a4 : 			CALL  E_HIGH 
+                                  0x7a,  //   00a7 : 				LD    A, D 
+                           0xed,  0x79,  //   00a8 : 			OUT   (C), A 
+                    0xcd,  0x85,  0x00,  //   00aa : 			CALL  E_LOW 
+                    0xcd,  0x93,  0x00,  //   00ad : 			CALL  E_HIGH 
+                                  0x7a,  //   00b0 : 				LD    A, D 
+                           0xcb,  0x27,  //   00b1 : 			SLA   A 
+                           0xcb,  0x27,  //   00b3 : 			SLA   A 
+                           0xcb,  0x27,  //   00b5 : 			SLA   A 
+                           0xcb,  0x27,  //   00b7 : 			SLA   A 
+                           0xed,  0x79,  //   00b9 : 			OUT   (C), A 
+                    0xcd,  0x85,  0x00,  //   00bb : 			CALL  E_LOW 
+                    0xcd,  0x93,  0x00,  //   00be : 			CALL  E_HIGH 
+                    0xcd,  0x85,  0x00,  //   00c1 : 			CALL  E_LOW 
+                    0xcd,  0x93,  0x00,  //   00c4 : 			CALL  E_HIGH 
+                    0xcd,  0x85,  0x00,  //   00c7 : 			CALL  E_LOW 
+                    0xcd,  0x93,  0x00,  //   00ca : 			CALL  E_HIGH 
+                    0xcd,  0x77,  0x00,  //   00cd : 			CALL  RS_HIGH 
+                                  0xc9,  //   00d0 : 				RET 
+                    0xcd,  0x69,  0x00,  //   00d1 : 		SDATA4: CALL  RS_LOW 
+                    0xcd,  0x93,  0x00,  //   00d4 : 			CALL  E_HIGH 
+                                  0x7a,  //   00d7 : 				LD    A, D 
+                           0xed,  0x79,  //   00d8 : 			OUT   (C), A 
+                    0xcd,  0x85,  0x00,  //   00da : 			CALL  E_LOW 
+                    0xcd,  0x93,  0x00,  //   00dd : 			CALL  E_HIGH 
+                    0xcd,  0x85,  0x00,  //   00e0 : 			CALL  E_LOW 
+                    0xcd,  0x93,  0x00,  //   00e3 : 			CALL  E_HIGH 
+                    0xcd,  0x85,  0x00,  //   00e6 : 			CALL  E_LOW 
+                    0xcd,  0x93,  0x00,  //   00e9 : 			CALL  E_HIGH 
+                    0xcd,  0x85,  0x00,  //   00ec : 			CALL  E_LOW 
+                    0xcd,  0x93,  0x00,  //   00ef : 			CALL  E_HIGH 
+                    0xcd,  0x77,  0x00,  //   00f2 : 			CALL  RS_HIGH 
+                                  0xc9,  //   00f5 : 				RET
+  };
+
+
+
+
+
+
+
+
+
 //--------------------------------------------------------------------------------
 
 struct
@@ -1362,12 +1656,10 @@ struct
       {"Turn LCD shield backlight off",   example_code_lcd_bl_off,   sizeof(example_code_lcd_bl_off)},
       {"Flash turn LCD shield backlight", example_code_lcd_bl_flash, sizeof(example_code_lcd_bl_flash)},
       {"Slow Flash turn LCD shield backlight", example_code_lcd_slow_flash, sizeof(example_code_lcd_slow_flash)},
+      {"LCD test",                             example_code_lcd_test, sizeof(example_code_lcd_test)},
       {"-",                               0,                         0},
     };
 
-// Current example code
-BYTE *example_code = example_code_ram;
-int example_code_length = sizeof(example_code_ram);
 
 void cmd_set_example_code(String cmd)
 {
@@ -1406,15 +1698,6 @@ void cmd_show_example_code(String cmd)
 // A keystroke allows the single stepping to proceed, or other actiosn to be
 // issued, such as register dumps
 
-enum {
-  STATE_NONE,
-  STATE_MEM_RD,
-  STATE_MEM_WR,
-  STATE_IO_RD,
-  STATE_IO_WR,
-  STATE_INT_ACK,
-};
-
 ////////////////////////////////////////////////////////////////////////////////
 //
 // Runs code at a programming model level, all refresh cycles etc are hidden
@@ -1430,10 +1713,9 @@ void cmd_run_test_code(String cmd)
 void cmd_trace_test_code(String cmd)
 {
   boolean running = true;
-  int state = STATE_NONE;
   int cycle_type = CYCLE_NONE;
   int cycle_dir = CYCLE_DIR_NONE;
-  boolean fast_mode = false;       // Skip all output and interaction
+
   int fast_mode_n = 0;
   int trigger_address = 0x8000;    // trigger when we hit RAm by default
   boolean trigger_on = false;
@@ -1443,6 +1725,12 @@ void cmd_trace_test_code(String cmd)
 
   // reset Z80
   reset_z80();
+  
+  // Enable IO and emulate memory
+  // We will allow the RAM to provide RAM data
+  
+  deassert_signal(SIG_MAPRQM); 
+  assert_signal(SIG_MAPRQI);
 
   // Clock and monitor the bus signals to work out what to do
   while( running )
@@ -1508,20 +1796,6 @@ void cmd_trace_test_code(String cmd)
 	    {
 	      cycle_type = CYCLE_MEM;
 	    }
-	  
-	  // Drive data bus if we have control of the memory map
-	  if ( maprqm == HIGH )
-	    {
-	      data_bus_outputs();
-	      set_data_state(example_code[addr_state() & 0xff]);
-	      if ( !fast_mode )
-		{
-		  Serial.print("Putting data on bus ");
-		  Serial.print(addr_state(), HEX);
-		  Serial.print(" ");
-		  Serial.print(example_code[addr_state() & 0xff], HEX);
-		}
-	    }
 	}
       
       // If we are running t states then skip the menu stuff.
@@ -1562,7 +1836,7 @@ void cmd_trace_test_code(String cmd)
 	{
 	  // Allow interaction
 	  Serial.println("");
-	  Serial.print("Breakpoiint:");
+	  Serial.print("Breakpoint:");
 	  if ( trigger_on )
 	    {
 	      Serial.print(trigger_address & 0xffff, HEX);
@@ -2045,6 +2319,9 @@ void setup()
   Serial.println("Z80 Shield Monitor");
   Serial.println("    (Set line ending to carriage return)");
   Serial.println(monitor_cmds);
+
+  example_code = example_code_ram;
+  example_code_length = sizeof(example_code_ram);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -2059,5 +2336,37 @@ void loop()
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 

@@ -1,24 +1,24 @@
 ;Z80 code to set up LCD on shield and write a string
-IO_ADDR_PIO0      EQU  80H
-IO_ADDR_PIO0_AD   EQU  IO_ADDR_PIO0+0
-IO_ADDR_PIO0_BD   EQU  IO_ADDR_PIO0+1
-IO_ADDR_PIO0_AC   EQU  IO_ADDR_PIO0+2
-IO_ADDR_PIO0_BC   EQU  IO_ADDR_PIO0+3
+IO_ADDR_PIO0:      EQU  00H
+IO_ADDR_PIO0_AD:   EQU  IO_ADDR_PIO0+0
+IO_ADDR_PIO0_BD:   EQU  IO_ADDR_PIO0+1
+IO_ADDR_PIO0_AC:   EQU  IO_ADDR_PIO0+2
+IO_ADDR_PIO0_BC:   EQU  IO_ADDR_PIO0+3
 
-	IO_ADDR_PIO1      EQU  80H
-IO_ADDR_PIO1_AD   EQU  IO_ADDR_PIO1+0
-IO_ADDR_PIO1_BD   EQU  IO_ADDR_PIO1+1
-IO_ADDR_PIO1_AC   EQU  IO_ADDR_PIO1+2
-IO_ADDR_PIO1_BC   EQU  IO_ADDR_PIO1+3
+IO_ADDR_PIO1:      EQU  80H
+IO_ADDR_PIO1_AD:   EQU  IO_ADDR_PIO1+0
+IO_ADDR_PIO1_BD:   EQU  IO_ADDR_PIO1+1
+IO_ADDR_PIO1_AC:   EQU  IO_ADDR_PIO1+2
+IO_ADDR_PIO1_BC:   EQU  IO_ADDR_PIO1+3
 
 	ORG     0A000H
 	
-SHADOW_A     DB    1
-SHADOW_B     DB    1
+SHADOW_A:     DB    1
+SHADOW_B:     DB    1
 	
 	ORG 0
 
-	LD  SP, 9000
+START:	LD  SP, 9000H
 
 	;; LCD DB4-7
 	LD   C, IO_ADDR_PIO1_AC
@@ -41,8 +41,42 @@ SHADOW_B     DB    1
 	CALL RS_HIGH
 	CALL E_LOW
 
-LOOP:	JR   LOOP
+; Initialise LCD
+  	CALL DELAY
 	
+	LD   D, 02H
+	CALL SDATA4
+
+	CALL DELAY
+	LD   D, 02H
+	CALL SDATA4
+
+	CALL DELAY
+
+	LD   D, 02H
+	CALL SDATA4
+
+	LD   D, 02H
+	CALL SDATA4
+
+	LD   D, 28H
+	CALL SDATA8
+
+        LD   D, 0FH
+	CALL SDATA8
+	
+LOOP:	JR   START
+
+
+DELAY:    LD   H,0FFH   
+          ; 
+LOOPH:    LD   L,0FFH   
+LOOPL:    DEC   L   
+          JR   NZ,LOOPL   
+          DEC   H   
+          JR   NZ,LOOPH   
+          RET      
+
 	;;  Init PIO port
 	;;  C: PIO control address
 	;;  D: PIO data address
@@ -63,54 +97,66 @@ PIOINIT:
 	OUT (C), A
 	RET
 
-RS_LOW:	LD    C, IO_ADDR_PIO1_BD
+RS_LOW:PUSh   BC
+	LD    C, IO_ADDR_PIO1_BD
 	LD    HL,(SHADOW_B)
 	LD    A, (HL)
 	RES   0, A
 	LD    (HL), A
 	OUT   (C), A
+	POp   BC
 	RET
 
-RS_HIGH:LD    C, IO_ADDR_PIO1_BD
+RS_HIGH:PUSH  BC
+        LD    C, IO_ADDR_PIO1_BD
 	LD    HL,(SHADOW_B)
 	LD    A, (HL)
 	SET   0, A
 	LD    (HL), A
 	OUT   (C), A
+	POP   BC
 	RET
 
-E_LOW:	LD    C, IO_ADDR_PIO1_BD
+E_LOW:  PUSH  BC
+	LD    C, IO_ADDR_PIO1_BD
 	LD    HL,(SHADOW_B)
 	LD    A, (HL)
 	RES   1, A
 	LD    (HL), A
 	OUT   (C), A
+	POP   BC
 	RET
 
-E_HIGH: LD    C, IO_ADDR_PIO1_BD
+E_HIGH: PUSH BC
+	LD    C, IO_ADDR_PIO1_BD
 	LD    HL,(SHADOW_B)
 	LD    A, (HL)
 	SET   1, A
 	LD    (HL), A
 	OUT   (C), A
+	POP   BC
 	RET
 	
 	;;  C: PIO data address
 	;;  D:Data required (8 bits)
-SETDATA:CALL  RS_LOW
+SDATA8: 
+
+	CALL  RS_LOW
 	CALL  E_HIGH
+
 	LD    A, D
-	SRL   A
-	SRL   A
-	SRL   A
-	SRL   A
+	
 	
 	OUT   (C), A
 	CALL  E_LOW
 
 	CALL  E_HIGH
 	LD    A, D
-	AND   0FH
+	SLA   A
+	SLA   A
+	SLA   A
+	SLA   A
+
 	OUT   (C), A
 	CALL  E_LOW
 	CALL  E_HIGH
@@ -122,4 +168,18 @@ SETDATA:CALL  RS_LOW
 	
 	RET
 	
-
+; Send 4 bit data
+SDATA4: CALL  RS_LOW
+	CALL  E_HIGH
+	LD    A, D
+	OUT   (C), A
+	CALL  E_LOW
+	CALL  E_HIGH
+	CALL  E_LOW
+	CALL  E_HIGH
+	CALL  E_LOW
+	CALL  E_HIGH
+	CALL  E_LOW
+	CALL  E_HIGH
+	CALL  RS_HIGH
+	RET
