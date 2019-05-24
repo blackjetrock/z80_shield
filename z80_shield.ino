@@ -451,7 +451,6 @@ void entry_null()
 
 void entry_mem1()
 {
-  Serial.println("mem1");
   
   // If the address is in the range of the RAM chip then we enableit.
   // This is because the Mega doesn't really have enough memory to emulate the RAM, so we use the real chip
@@ -481,22 +480,20 @@ void entry_mem1()
 // Memory read cycle
 void entry_mem_rd()
 {
-  Serial.print("entry_mem_rd");
-  
   // We get data from either the example code (flash) or our emulated RAM
   if ( addr_state() < 0x8000 )
     {
       // Emulate flash
       data_bus_outputs();
       
-      set_data_state(example_code[addr_state() & 0xff]);
+      set_data_state(example_code[addr_state()]);
 
       if ( !fast_mode )
 	{
 	  Serial.print("Putting data on bus ");
 	  Serial.print(addr_state(), HEX);
 	  Serial.print(" ");
-	  Serial.print(example_code[addr_state() & 0xff], HEX);
+	  Serial.print(example_code[addr_state()], HEX);
 	}
     }
 }
@@ -507,11 +504,11 @@ void entry_mem_rd_end()
   data_bus_inputs();
 
   // release the memory map
-  if (addr_state() >= 0x8000)
-    {
+  //  if (addr_state() >= 0x8000)
+  //{
       // Turn memory off
       digitalWrite(MAPRQM_Pin, HIGH);
-    }
+      // }
 }
 
 char * bsm_state_name()
@@ -1383,26 +1380,50 @@ BYTE example_code_lcd_bl_off[] =
 BYTE example_code_lcd_bl_flash[] =
   {
                     0x31,  0x00,  0x90,  //   0000 : 			LD SP, 9000H 
-                           0x0e,  0x83,  //   0003 : 		START:	LD C, IO_ADDR_PIO1_BC 
-                           0x3e,  0xcf,  //   0005 : 			LD A, 0CFH 
-                           0xed,  0x79,  //   0007 : 			OUT (C),A 
-                           0x0e,  0x83,  //   0009 : 			LD C, IO_ADDR_PIO1_BC 
-                           0x3e,  0xfb,  //   000b : 			LD A, 0FBH 
-                           0xed,  0x79,  //   000d : 			OUT (C),A 
-                           0x0e,  0x83,  //   000f : 			LD C, IO_ADDR_PIO1_BC 
-                           0x3e,  0x00,  //   0011 : 			LD A, 00H 
-                           0xed,  0x79,  //   0013 : 			OUT (C),A 
-                           0x0e,  0x83,  //   0015 : 			LD C, IO_ADDR_PIO1_BC 
-                           0x3e,  0xcf,  //   0017 : 			LD A, 0CFH 
-                           0xed,  0x79,  //   0019 : 			OUT (C),A 
-                           0x0e,  0x83,  //   001b : 			LD C, IO_ADDR_PIO1_BC 
-                           0x3e,  0xff,  //   001d : 			LD A, 0FFH 
-                           0xed,  0x79,  //   001f : 			OUT (C),A 
-                           0x0e,  0x83,  //   0021 : 			LD C, IO_ADDR_PIO1_BC 
-                           0x3e,  0x00,  //   0023 : 			LD A, 00H 
-                           0xed,  0x79,  //   0025 : 			OUT (C),A 
-                           0x18,  0xda,  //   0027 : 			JR START 
+                           0x0e,  0x83,  //   0003 : 			LD   C, IO_ADDR_PIO1_BC 
+                           0x16,  0x81,  //   0005 : 			LD   D, IO_ADDR_PIO1_BD 
+                           0x26,  0xfb,  //   0007 : 			LD   H, 0FBH 
+                           0x2e,  0x00,  //   0009 : 			LD   L, 00H 
+                    0xcd,  0x3f,  0x00,  //   000b : 			CALL PIOINIT 
+                           0x0e,  0x83,  //   000e : 			LD   C, IO_ADDR_PIO1_BC 
+                           0x16,  0x81,  //   0010 : 			LD   D, IO_ADDR_PIO1_BD 
+                           0x26,  0xff,  //   0012 : 			LD   H, 0FFH 
+                           0x2e,  0x00,  //   0014 : 			LD   L, 00H 
+                    0xcd,  0x3f,  0x00,  //   0016 : 			CALL PIOINIT 
+                           0x0e,  0x83,  //   0019 : 			LD C, IO_ADDR_PIO1_BC 
+                           0x3e,  0xcf,  //   001b : 			LD A, 0CFH 
+                           0xed,  0x79,  //   001d : 			OUT (C),A 
+                           0x0e,  0x83,  //   001f : 			LD C, IO_ADDR_PIO1_BC 
+                           0x3e,  0xfb,  //   0021 : 			LD A, 0FBH 
+                           0xed,  0x79,  //   0023 : 			OUT (C),A 
+                           0x0e,  0x81,  //   0025 : 			LD C, IO_ADDR_PIO1_BD 
+                           0x3e,  0x00,  //   0027 : 			LD A, 00H 
+                           0xed,  0x79,  //   0029 : 			OUT (C),A 
+                           0x0e,  0x83,  //   002b : 			LD C, IO_ADDR_PIO1_BC 
+                           0x3e,  0xcf,  //   002d : 			LD A, 0CFH 
+                           0xed,  0x79,  //   002f : 			OUT (C),A 
+                           0x0e,  0x83,  //   0031 : 			LD C, IO_ADDR_PIO1_BC 
+                           0x3e,  0xff,  //   0033 : 			LD A, 0FFH 
+                           0xed,  0x79,  //   0035 : 			OUT (C),A 
+                           0x0e,  0x81,  //   0037 : 			LD C, IO_ADDR_PIO1_BD 
+                           0x3e,  0x00,  //   0039 : 			LD A, 00H 
+                           0xed,  0x79,  //   003b : 			OUT (C),A 
+                           0x18,  0xc4,  //   003d : 			JR START 
+                           0x3e,  0xcf,  //   003f : 			LD A, 0CFH 
+                           0xed,  0x79,  //   0041 : 			OUT (C), A 
+                                  0x7c,  //   0043 : 				LD A, H 
+                           0xed,  0x79,  //   0044 : 			OUT (C), A 
+                                  0x7d,  //   0046 : 				LD A, L 
+                                  0x4a,  //   0047 : 				LD C, D 
+                           0xed,  0x79,  //   0048 : 			OUT (C), A 
+                                  0xc9,  //   004a : 				RET
   };
+
+
+
+
+
+
 
 
 
@@ -1517,120 +1538,190 @@ BYTE example_code_lcd_test[] =
                            0x16,  0x80,  //   0005 : 			LD   D, IO_ADDR_PIO1_AD 
                            0x26,  0x0f,  //   0007 : 			LD   H, 0FH 
                            0x2e,  0x00,  //   0009 : 			LD   L, 00H 
-                    0xcd,  0x5d,  0x00,  //   000b : 			CALL PIOINIT 
+                    0xcd,  0x95,  0x00,  //   000b : 			CALL PIOINIT 
                            0x0e,  0x83,  //   000e : 			LD   C, IO_ADDR_PIO1_BC 
                            0x16,  0x81,  //   0010 : 			LD   D, IO_ADDR_PIO1_BD 
                            0x26,  0xfc,  //   0012 : 			LD   H, 0FCH 
                            0x2e,  0x00,  //   0014 : 			LD   L, 00H 
-                    0xcd,  0x5d,  0x00,  //   0016 : 			CALL PIOINIT 
+                    0xcd,  0x95,  0x00,  //   0016 : 			CALL PIOINIT 
                            0x3e,  0x00,  //   0019 : 			LD   A, 0 
                     0x32,  0x00,  0xa0,  //   001b : 			LD   (SHADOW_A), A 
                            0x3e,  0x00,  //   001e : 			LD   A, 0 
                     0x32,  0x01,  0xa0,  //   0020 : 			LD   (SHADOW_B), A 
-                    0xcd,  0x77,  0x00,  //   0023 : 			CALL RS_HIGH 
-                    0xcd,  0x85,  0x00,  //   0026 : 			CALL E_LOW 
-                    0xcd,  0x52,  0x00,  //   0029 : 		  	CALL DELAY 
-                           0x16,  0x02,  //   002c : 			LD   D, 02H 
-                    0xcd,  0xd1,  0x00,  //   002e : 			CALL SDATA4 
-                    0xcd,  0x52,  0x00,  //   0031 : 			CALL DELAY 
-                           0x16,  0x02,  //   0034 : 			LD   D, 02H 
-                    0xcd,  0xd1,  0x00,  //   0036 : 			CALL SDATA4 
-                    0xcd,  0x52,  0x00,  //   0039 : 			CALL DELAY 
-                           0x16,  0x02,  //   003c : 			LD   D, 02H 
-                    0xcd,  0xd1,  0x00,  //   003e : 			CALL SDATA4 
-                           0x16,  0x02,  //   0041 : 			LD   D, 02H 
-                    0xcd,  0xd1,  0x00,  //   0043 : 			CALL SDATA4 
-                           0x16,  0x28,  //   0046 : 			LD   D, 28H 
-                    0xcd,  0xa1,  0x00,  //   0048 : 			CALL SDATA8 
-                           0x16,  0x0f,  //   004b : 		        LD   D, 0FH 
-                    0xcd,  0xa1,  0x00,  //   004d : 			CALL SDATA8 
-                           0x18,  0xae,  //   0050 : 		LOOP:	JR   START 
-                           0x26,  0xff,  //   0052 : 		DELAY:    LD   H,0FFH    
-                           0x2e,  0xff,  //   0054 : 		LOOPH:    LD   L,0FFH    
-                                  0x2d,  //   0056 : 			LOOPL:    DEC   L    
-                           0x20,  0xfd,  //   0057 : 		          JR   NZ,LOOPL    
-                                  0x25,  //   0059 : 			          DEC   H    
-                           0x20,  0xf8,  //   005a : 		          JR   NZ,LOOPH    
-                                  0xc9,  //   005c : 			          RET       
-                           0x3e,  0xcf,  //   005d : 			LD A, 0CFH 
-                           0xed,  0x79,  //   005f : 			OUT (C), A 
-                                  0x7c,  //   0061 : 				LD A, H 
-                           0xed,  0x79,  //   0062 : 			OUT (C), A 
-                                  0x7d,  //   0064 : 				LD A, L 
-                                  0x4a,  //   0065 : 				LD C, D 
-                           0xed,  0x79,  //   0066 : 			OUT (C), A 
-                                  0xc9,  //   0068 : 				RET 
-                                  0xc5,  //   0069 : 			RS_LOW:PUSh   BC 
-                           0x0e,  0x81,  //   006a : 			LD    C, IO_ADDR_PIO1_BD 
-                    0x2a,  0x01,  0xa0,  //   006c : 			LD    HL,(SHADOW_B) 
-                                  0x7e,  //   006f : 				LD    A, (HL) 
-                           0xcb,  0x87,  //   0070 : 			RES   0, A 
-                                  0x77,  //   0072 : 				LD    (HL), A 
-                           0xed,  0x79,  //   0073 : 			OUT   (C), A 
-                                  0xc1,  //   0075 : 				POp   BC 
-                                  0xc9,  //   0076 : 				RET 
-                                  0xc5,  //   0077 : 			RS_HIGH:PUSH  BC 
-                           0x0e,  0x81,  //   0078 : 		        LD    C, IO_ADDR_PIO1_BD 
-                    0x2a,  0x01,  0xa0,  //   007a : 			LD    HL,(SHADOW_B) 
-                                  0x7e,  //   007d : 				LD    A, (HL) 
-                           0xcb,  0xc7,  //   007e : 			SET   0, A 
-                                  0x77,  //   0080 : 				LD    (HL), A 
-                           0xed,  0x79,  //   0081 : 			OUT   (C), A 
-                                  0xc1,  //   0083 : 				POP   BC 
-                                  0xc9,  //   0084 : 				RET 
-                                  0xc5,  //   0085 : 			E_LOW:  PUSH  BC 
-                           0x0e,  0x81,  //   0086 : 			LD    C, IO_ADDR_PIO1_BD 
-                    0x2a,  0x01,  0xa0,  //   0088 : 			LD    HL,(SHADOW_B) 
-                                  0x7e,  //   008b : 				LD    A, (HL) 
-                           0xcb,  0x8f,  //   008c : 			RES   1, A 
-                                  0x77,  //   008e : 				LD    (HL), A 
-                           0xed,  0x79,  //   008f : 			OUT   (C), A 
-                                  0xc1,  //   0091 : 				POP   BC 
-                                  0xc9,  //   0092 : 				RET 
-                                  0xc5,  //   0093 : 			E_HIGH: PUSH BC 
-                           0x0e,  0x81,  //   0094 : 			LD    C, IO_ADDR_PIO1_BD 
-                    0x2a,  0x01,  0xa0,  //   0096 : 			LD    HL,(SHADOW_B) 
-                                  0x7e,  //   0099 : 				LD    A, (HL) 
-                           0xcb,  0xcf,  //   009a : 			SET   1, A 
-                                  0x77,  //   009c : 				LD    (HL), A 
-                           0xed,  0x79,  //   009d : 			OUT   (C), A 
-                                  0xc1,  //   009f : 				POP   BC 
+                    0xcd,  0xa1,  0x00,  //   0023 : 			CALL RS_LOW 
+                    0xcd,  0xc1,  0x00,  //   0026 : 			CALL E_LOW 
+                           0x16,  0x03,  //   0029 : 			LD   D, 03H 
+                    0xcd,  0x2b,  0x01,  //   002b : 			CALL SDATA4 
+                           0x16,  0x03,  //   002e : 			LD   D, 03H 
+                    0xcd,  0x2b,  0x01,  //   0030 : 			CALL SDATA4 
+                           0x16,  0x03,  //   0033 : 		       LD   D, 03H 
+                    0xcd,  0x2b,  0x01,  //   0035 : 			CALL SDATA4 
+                           0x16,  0x02,  //   0038 : 		       	LD   D, 02H 
+                    0xcd,  0x2b,  0x01,  //   003a : 			CALL SDATA4 
+                           0x16,  0x0e,  //   003d : 			LD   D, 0EH 
+                    0xcd,  0xe1,  0x00,  //   003f : 			CALL SDATA8 
+                           0x16,  0x06,  //   0042 : 		        LD   D, 06H 
+                    0xcd,  0xe1,  0x00,  //   0044 : 			CALL SDATA8 
+                           0x16,  0x5a,  //   0047 : 			       ld  d, 'Z' 
+                    0xcd,  0x06,  0x01,  //   0049 : 			     call DDATA8 
+                           0x16,  0x38,  //   004c : 			       ld  d, '8' 
+                    0xcd,  0x06,  0x01,  //   004e : 			     call DDATA8 
+                           0x16,  0x30,  //   0051 : 			       ld  d, '0' 
+                    0xcd,  0x06,  0x01,  //   0053 : 			     call DDATA8 
+                           0x16,  0x20,  //   0056 : 			       ld  d, ' ' 
+                    0xcd,  0x06,  0x01,  //   0058 : 			     call DDATA8 
+                           0x16,  0x53,  //   005b : 			       ld  d, 'S' 
+                    0xcd,  0x06,  0x01,  //   005d : 			     call DDATA8 
+                           0x16,  0x68,  //   0060 : 			       ld  d, 'h' 
+                    0xcd,  0x06,  0x01,  //   0062 : 			     call DDATA8 
+                           0x16,  0x69,  //   0065 : 			       ld  d, 'i' 
+                    0xcd,  0x06,  0x01,  //   0067 : 			     call DDATA8 
+                           0x16,  0x65,  //   006a : 			       ld  d, 'e' 
+                    0xcd,  0x06,  0x01,  //   006c : 			     call DDATA8 
+                           0x16,  0x6c,  //   006f : 			       ld  d, 'l' 
+                    0xcd,  0x06,  0x01,  //   0071 : 			     call DDATA8 
+                           0x16,  0x64,  //   0074 : 			       ld  d, 'd' 
+                    0xcd,  0x06,  0x01,  //   0076 : 			     call DDATA8 
+                           0x18,  0xfe,  //   0079 : 		LOOP:	JR   LOOP 
+                                  0x7e,  //   007b : 			     DSTR: LD A,(HL) 
+                           0xfe,  0x00,  //   007c : 			     CP    0 
+                           0x20,  0x01,  //   007e : 			     JR     NZ, CONT 
+                                  0xc9,  //   0080 : 				     RET 
+                                  0x7e,  //   0081 : 				     CONT:  LD A,(HL) 
+                                  0x57,  //   0082 : 				     LD D, A 
+                    0xcd,  0x06,  0x01,  //   0083 : 			     CALL  DDATA8 
+                                  0x23,  //   0086 : 				     INC HL 
+                           0x18,  0xf2,  //   0087 : 			     JR DSTR 
+                                  0xc9,  //   0089 : 			DELAY:   RET 
+                           0x26,  0xff,  //   008a : 			LD   H,0FFH    
+                           0x2e,  0xff,  //   008c : 		LOOPH:    LD   L,0FFH    
+                                  0x2d,  //   008e : 			LOOPL:    DEC   L    
+                           0x20,  0xfd,  //   008f : 		          JR   NZ,LOOPL    
+                                  0x25,  //   0091 : 			          DEC   H    
+                           0x20,  0xf8,  //   0092 : 		          JR   NZ,LOOPH    
+                                  0xc9,  //   0094 : 			          RET       
+                           0x3e,  0xcf,  //   0095 : 			LD A, 0CFH 
+                           0xed,  0x79,  //   0097 : 			OUT (C), A 
+                                  0x7c,  //   0099 : 				LD A, H 
+                           0xed,  0x79,  //   009a : 			OUT (C), A 
+                                  0x7d,  //   009c : 				LD A, L 
+                                  0x4a,  //   009d : 				LD C, D 
+                           0xed,  0x79,  //   009e : 			OUT (C), A 
                                   0xc9,  //   00a0 : 				RET 
-                    0xcd,  0x69,  0x00,  //   00a1 : 			CALL  RS_LOW 
-                    0xcd,  0x93,  0x00,  //   00a4 : 			CALL  E_HIGH 
-                                  0x7a,  //   00a7 : 				LD    A, D 
-                           0xed,  0x79,  //   00a8 : 			OUT   (C), A 
-                    0xcd,  0x85,  0x00,  //   00aa : 			CALL  E_LOW 
-                    0xcd,  0x93,  0x00,  //   00ad : 			CALL  E_HIGH 
-                                  0x7a,  //   00b0 : 				LD    A, D 
-                           0xcb,  0x27,  //   00b1 : 			SLA   A 
-                           0xcb,  0x27,  //   00b3 : 			SLA   A 
-                           0xcb,  0x27,  //   00b5 : 			SLA   A 
-                           0xcb,  0x27,  //   00b7 : 			SLA   A 
-                           0xed,  0x79,  //   00b9 : 			OUT   (C), A 
-                    0xcd,  0x85,  0x00,  //   00bb : 			CALL  E_LOW 
-                    0xcd,  0x93,  0x00,  //   00be : 			CALL  E_HIGH 
-                    0xcd,  0x85,  0x00,  //   00c1 : 			CALL  E_LOW 
-                    0xcd,  0x93,  0x00,  //   00c4 : 			CALL  E_HIGH 
-                    0xcd,  0x85,  0x00,  //   00c7 : 			CALL  E_LOW 
-                    0xcd,  0x93,  0x00,  //   00ca : 			CALL  E_HIGH 
-                    0xcd,  0x77,  0x00,  //   00cd : 			CALL  RS_HIGH 
+                                  0xc5,  //   00a1 : 			RS_LOW:PUSH   BC 
+                                  0xd5,  //   00a2 : 			      PUSH    DE 
+                           0x0e,  0x81,  //   00a3 : 			LD    C, IO_ADDR_PIO1_BD 
+                    0x21,  0x01,  0xa0,  //   00a5 : 			LD    HL,SHADOW_B 
+                                  0x7e,  //   00a8 : 				LD    A, (HL) 
+                           0xcb,  0x87,  //   00a9 : 			RES   0, A 
+                                  0x77,  //   00ab : 				LD    (HL), A 
+                           0xed,  0x79,  //   00ac : 			OUT   (C), A 
+                                  0xd1,  //   00ae : 				POP   DE 
+                                  0xc1,  //   00af : 				POP   BC 
+                                  0xc9,  //   00b0 : 				RET 
+                                  0xc5,  //   00b1 : 			RS_HIGH:PUSH  BC 
+                                  0xd5,  //   00b2 : 			      PUSH    DE 
+                           0x0e,  0x81,  //   00b3 : 		        LD    C, IO_ADDR_PIO1_BD 
+                    0x21,  0x01,  0xa0,  //   00b5 : 			LD    HL,SHADOW_B 
+                                  0x7e,  //   00b8 : 				LD    A, (HL) 
+                           0xcb,  0xc7,  //   00b9 : 			SET   0, A 
+                                  0x77,  //   00bb : 				LD    (HL), A 
+                           0xed,  0x79,  //   00bc : 			OUT   (C), A 
+                                  0xd1,  //   00be : 				POP   DE	 
+                                  0xc1,  //   00bf : 				POP   BC 
+                                  0xc9,  //   00c0 : 				RET 
+                                  0xc5,  //   00c1 : 			E_LOW:  PUSH  BC 
+                                  0xd5,  //   00c2 : 			        PUSH    DE 
+                           0x0e,  0x81,  //   00c3 : 			LD    C, IO_ADDR_PIO1_BD 
+                    0x21,  0x01,  0xa0,  //   00c5 : 			LD    HL,SHADOW_B 
+                                  0x7e,  //   00c8 : 				LD    A, (HL) 
+                           0xcb,  0x8f,  //   00c9 : 			RES   1, A 
+                                  0x77,  //   00cb : 				LD    (HL), A 
+                           0xed,  0x79,  //   00cc : 			OUT   (C), A 
+                                  0xd1,  //   00ce : 				POP   DE 
+                                  0xc1,  //   00cf : 				POP   BC 
                                   0xc9,  //   00d0 : 				RET 
-                    0xcd,  0x69,  0x00,  //   00d1 : 		SDATA4: CALL  RS_LOW 
-                    0xcd,  0x93,  0x00,  //   00d4 : 			CALL  E_HIGH 
-                                  0x7a,  //   00d7 : 				LD    A, D 
-                           0xed,  0x79,  //   00d8 : 			OUT   (C), A 
-                    0xcd,  0x85,  0x00,  //   00da : 			CALL  E_LOW 
-                    0xcd,  0x93,  0x00,  //   00dd : 			CALL  E_HIGH 
-                    0xcd,  0x85,  0x00,  //   00e0 : 			CALL  E_LOW 
-                    0xcd,  0x93,  0x00,  //   00e3 : 			CALL  E_HIGH 
-                    0xcd,  0x85,  0x00,  //   00e6 : 			CALL  E_LOW 
-                    0xcd,  0x93,  0x00,  //   00e9 : 			CALL  E_HIGH 
-                    0xcd,  0x85,  0x00,  //   00ec : 			CALL  E_LOW 
-                    0xcd,  0x93,  0x00,  //   00ef : 			CALL  E_HIGH 
-                    0xcd,  0x77,  0x00,  //   00f2 : 			CALL  RS_HIGH 
-                                  0xc9,  //   00f5 : 				RET
+                                  0xc5,  //   00d1 : 			E_HIGH: PUSH BC 
+                                  0xd5,  //   00d2 : 			      PUSH    DE 
+                           0x0e,  0x81,  //   00d3 : 			LD    C, IO_ADDR_PIO1_BD 
+                    0x21,  0x01,  0xa0,  //   00d5 : 			LD    HL,SHADOW_B 
+                                  0x7e,  //   00d8 : 				LD    A, (HL) 
+                           0xcb,  0xcf,  //   00d9 : 			SET   1, A 
+                                  0x77,  //   00db : 				LD    (HL), A 
+                           0xed,  0x79,  //   00dc : 			OUT   (C), A 
+                                  0xd1,  //   00de : 				POP   DE	 
+                                  0xc1,  //   00df : 				POP   BC 
+                                  0xc9,  //   00e0 : 				RET 
+                           0x0e,  0x80,  //   00e1 : 			LD    C, IO_ADDR_PIO1_AD 
+                    0xcd,  0xa1,  0x00,  //   00e3 : 			CALL  RS_LOW 
+                    0xcd,  0xd1,  0x00,  //   00e6 : 			CALL  E_HIGH 
+                                  0x7a,  //   00e9 : 				LD    A, D 
+                           0x0e,  0x80,  //   00ea : 			LD    C, IO_ADDR_PIO1_AD	 
+                           0xed,  0x79,  //   00ec : 			OUT   (C), A 
+                    0xcd,  0xc1,  0x00,  //   00ee : 			CALL  E_LOW 
+                    0xcd,  0xd1,  0x00,  //   00f1 : 			CALL  E_HIGH 
+                                  0x7a,  //   00f4 : 				LD    A, D 
+                           0xcb,  0x27,  //   00f5 : 			SLA   A 
+                           0xcb,  0x27,  //   00f7 : 			SLA   A 
+                           0xcb,  0x27,  //   00f9 : 			SLA   A 
+                           0xcb,  0x27,  //   00fb : 			SLA   A 
+                           0xed,  0x79,  //   00fd : 			OUT   (C), A 
+                    0xcd,  0xc1,  0x00,  //   00ff : 			CALL  E_LOW 
+                    0xcd,  0xb1,  0x00,  //   0102 : 			CALL  RS_HIGH 
+                                  0xc9,  //   0105 : 				RET 
+                           0x0e,  0x80,  //   0106 : 			LD    C, IO_ADDR_PIO1_AD 
+                    0xcd,  0xb1,  0x00,  //   0108 : 			CALL  RS_HIGH 
+                    0xcd,  0xd1,  0x00,  //   010b : 			CALL  E_HIGH 
+                                  0x7a,  //   010e : 				LD    A, D 
+                           0x0e,  0x80,  //   010f : 			LD    C, IO_ADDR_PIO1_AD	 
+                           0xed,  0x79,  //   0111 : 			OUT   (C), A 
+                    0xcd,  0xc1,  0x00,  //   0113 : 			CALL  E_LOW 
+                    0xcd,  0xd1,  0x00,  //   0116 : 			CALL  E_HIGH 
+                                  0x7a,  //   0119 : 				LD    A, D 
+                           0xcb,  0x27,  //   011a : 			SLA   A 
+                           0xcb,  0x27,  //   011c : 			SLA   A 
+                           0xcb,  0x27,  //   011e : 			SLA   A 
+                           0xcb,  0x27,  //   0120 : 			SLA   A 
+                           0xed,  0x79,  //   0122 : 			OUT   (C), A 
+                    0xcd,  0xc1,  0x00,  //   0124 : 			CALL  E_LOW 
+                    0xcd,  0xb1,  0x00,  //   0127 : 			CALL  RS_HIGH 
+                                  0xc9,  //   012a : 				RET 
+                    0xcd,  0xa1,  0x00,  //   012b : 		SDATA4: CALL  RS_LOW 
+                    0xcd,  0xd1,  0x00,  //   012e : 			CALL  E_HIGH 
+                                  0x7a,  //   0131 : 				LD    A, D 
+                           0xcb,  0x27,  //   0132 : 			SLA   A 
+                           0xcb,  0x27,  //   0134 : 			SLA   A 
+                           0xcb,  0x27,  //   0136 : 			SLA   A 
+                           0xcb,  0x27,  //   0138 : 			SLA   A 
+                           0x0e,  0x80,  //   013a : 			LD    C, IO_ADDR_PIO1_AD 
+                           0xed,  0x79,  //   013c : 			OUT   (C), A 
+                    0xcd,  0xc1,  0x00,  //   013e : 			CALL  E_LOW 
+                    0xcd,  0xb1,  0x00,  //   0141 : 			CALL  RS_HIGH 
+                                  0xc9,  //   0144 : 				RET 
   };
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -1715,7 +1806,8 @@ void cmd_trace_test_code(String cmd)
   boolean running = true;
   int cycle_type = CYCLE_NONE;
   int cycle_dir = CYCLE_DIR_NONE;
-
+  int cycle_n = 0;
+  
   int fast_mode_n = 0;
   int trigger_address = 0x8000;    // trigger when we hit RAm by default
   boolean trigger_on = false;
@@ -1768,6 +1860,7 @@ void cmd_trace_test_code(String cmd)
       int mreq = signal_state("MREQ");
       int ioreq = signal_state("IOREQ");
       int maprqm = signal_state("MAPRQM");
+      int last_addr = -1;
       
       if ( (rd == HIGH) )
 	{
@@ -1803,6 +1896,14 @@ void cmd_trace_test_code(String cmd)
       
       if ( fast_mode )
 	{
+	  // Give an indication of execution by displaying every
+	  #if 0
+	  if( addr_state()!=last_addr  )
+	    {
+	      Serial.println(to_hex(addr_state(), 4));
+	    }
+	  last_addr = addr_state();
+#endif			   
 	  if ( fast_mode_n > 0 )
 	    {
 	      fast_mode_n--;
@@ -1848,7 +1949,7 @@ void cmd_trace_test_code(String cmd)
 	  
 	  Serial.print(" Bus state:");
 	  Serial.println(bsm_state_name());
-	  Serial.println(" (G:Grab Bus  R: release bus M:Mega control  F:Free run T:Drive n tstates) b:Breakpoint B:Toggle breakpoint)");
+	  Serial.println(" (G:Grab Bus  R: release bus M:Mega control  F:Free run t:Drive n tstates) b:Breakpoint B:Toggle breakpoint)");
 	  Serial.println(" (I:Request IO Map i:Release IO map J:Request MEM Map j:Release MEM map)");
 	  Serial.println(" (return:next q:quit 1:assert reset 0:deassert reset d:dump regs f:Run forever)");
 	  
@@ -1865,7 +1966,7 @@ void cmd_trace_test_code(String cmd)
 		{
 		  switch( Serial.read())
 		    {
-		    case 'T':
+		    case 't':
 		      fast_mode = true;
 		      fast_mode_n = 100;
 		      quiet = true;
@@ -2336,6 +2437,35 @@ void loop()
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

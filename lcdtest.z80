@@ -38,37 +38,76 @@ START:	LD  SP, 9000H
 	LD   A, 0
 	LD   (SHADOW_B), A
 
-	CALL RS_HIGH
+	CALL RS_LOW
 	CALL E_LOW
 
 ; Initialise LCD
-  	CALL DELAY
+		       ;  	CALL DELAY		;
 	
-	LD   D, 02H
+	LD   D, 03H
 	CALL SDATA4
+     ;	CALL DELAY
 
-	CALL DELAY
-	LD   D, 02H
+	LD   D, 03H
 	CALL SDATA4
+     ;	CALL DELAY
 
-	CALL DELAY
-
-	LD   D, 02H
+       LD   D, 03H
 	CALL SDATA4
+     ;	CALL DELAY
 
-	LD   D, 02H
+       	LD   D, 02H
 	CALL SDATA4
+     ;	CALL DELAY
 
-	LD   D, 28H
+	LD   D, 0EH
 	CALL SDATA8
-
-        LD   D, 0FH
-	CALL SDATA8
+     ;	CALL DELAY
 	
-LOOP:	JR   START
+        LD   D, 06H
+	CALL SDATA8
+     ;	CALL DELAY
 
+	       ld  d, 'Z'
+	     call DDATA8
+	       ld  d, '8'
+	     call DDATA8
+	       ld  d, '0'
+	     call DDATA8
+	       ld  d, ' '
+	     call DDATA8
+	       ld  d, 'S'
+	     call DDATA8
+	       ld  d, 'h'
+	     call DDATA8
+	       ld  d, 'i'
+	     call DDATA8
+	       ld  d, 'e'
+	     call DDATA8
+	       ld  d, 'l'
+	     call DDATA8
+	       ld  d, 'd'
+	     call DDATA8
+	     
+	     ;	       LD  HL, BAN
+	     ;CALL DSTR
+	     
+LOOP:	JR   LOOP
 
-DELAY:    LD   H,0FFH   
+     DSTR: LD A,(HL)
+	     CP    0
+	     JR     NZ, CONT
+
+	     RET
+	     CONT:  LD A,(HL)
+	     LD D, A
+	     CALL  DDATA8
+	     INC HL
+	     JR DSTR
+
+	     
+DELAY:   RET
+	LD   H,0FFH   
           ; 
 LOOPH:    LD   L,0FFH   
 LOOPL:    DEC   L   
@@ -97,56 +136,66 @@ PIOINIT:
 	OUT (C), A
 	RET
 
-RS_LOW:PUSh   BC
+RS_LOW:PUSH   BC
+      PUSH    DE
 	LD    C, IO_ADDR_PIO1_BD
-	LD    HL,(SHADOW_B)
+	LD    HL,SHADOW_B
 	LD    A, (HL)
 	RES   0, A
 	LD    (HL), A
 	OUT   (C), A
-	POp   BC
+	POP   DE
+	POP   BC
+	
 	RET
 
 RS_HIGH:PUSH  BC
+      PUSH    DE
         LD    C, IO_ADDR_PIO1_BD
-	LD    HL,(SHADOW_B)
+	LD    HL,SHADOW_B
 	LD    A, (HL)
 	SET   0, A
 	LD    (HL), A
 	OUT   (C), A
+	POP   DE	
 	POP   BC
 	RET
 
 E_LOW:  PUSH  BC
+        PUSH    DE
 	LD    C, IO_ADDR_PIO1_BD
-	LD    HL,(SHADOW_B)
+	LD    HL,SHADOW_B
 	LD    A, (HL)
 	RES   1, A
 	LD    (HL), A
 	OUT   (C), A
+	POP   DE
 	POP   BC
 	RET
 
 E_HIGH: PUSH BC
+      PUSH    DE
 	LD    C, IO_ADDR_PIO1_BD
-	LD    HL,(SHADOW_B)
+	LD    HL,SHADOW_B
 	LD    A, (HL)
 	SET   1, A
 	LD    (HL), A
 	OUT   (C), A
+	POP   DE	
 	POP   BC
 	RET
 	
 	;;  C: PIO data address
 	;;  D:Data required (8 bits)
 SDATA8: 
-
+	LD    C, IO_ADDR_PIO1_AD
 	CALL  RS_LOW
 	CALL  E_HIGH
 
 	LD    A, D
 	
-	
+
+	LD    C, IO_ADDR_PIO1_AD	
 	OUT   (C), A
 	CALL  E_LOW
 
@@ -159,11 +208,35 @@ SDATA8:
 
 	OUT   (C), A
 	CALL  E_LOW
+
+	CALL  RS_HIGH
+	
+	RET
+
+	  ;;  C: PIO data address
+	;;  D:Data required (8 bits)
+DDATA8: 
+	LD    C, IO_ADDR_PIO1_AD
+	CALL  RS_HIGH
 	CALL  E_HIGH
+
+	LD    A, D
+	
+
+	LD    C, IO_ADDR_PIO1_AD	
+	OUT   (C), A
 	CALL  E_LOW
+
 	CALL  E_HIGH
+	LD    A, D
+	SLA   A
+	SLA   A
+	SLA   A
+	SLA   A
+
+	OUT   (C), A
 	CALL  E_LOW
-	CALL  E_HIGH
+
 	CALL  RS_HIGH
 	
 	RET
@@ -172,14 +245,12 @@ SDATA8:
 SDATA4: CALL  RS_LOW
 	CALL  E_HIGH
 	LD    A, D
+	SLA   A
+	SLA   A
+	SLA   A
+	SLA   A
+	LD    C, IO_ADDR_PIO1_AD
 	OUT   (C), A
 	CALL  E_LOW
-	CALL  E_HIGH
-	CALL  E_LOW
-	CALL  E_HIGH
-	CALL  E_LOW
-	CALL  E_HIGH
-	CALL  E_LOW
-	CALL  E_HIGH
 	CALL  RS_HIGH
 	RET
