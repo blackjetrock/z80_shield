@@ -11,10 +11,20 @@ IO_ADDR_PIO1_BD:   EQU  IO_ADDR_PIO1+1
 IO_ADDR_PIO1_AC:   EQU  IO_ADDR_PIO1+2
 IO_ADDR_PIO1_BC:   EQU  IO_ADDR_PIO1+3
 
+AD_CS:	           EQU  01H
+AD_CLK:	           EQU  02H
+AD_DIN:	           EQU  04H		
+AD_DOUT:	   EQU  08H
+	
 	ORG     0A000H
 	
 SHADOW_A:     DB    1
 SHADOW_B:     DB    1
+SHADOW_AD:     DB    1
+
+	ORG  0B000H
+ADS0:	       DB    2
+ADS1:	       DB    2
 	
 	ORG 0
 
@@ -27,12 +37,23 @@ START:	LD  SP, 9000H
 	LD   L, 00H
 	CALL PIOINIT
 
+;RS and E
 	LD   C, IO_ADDR_PIO1_BC
 	LD   D, IO_ADDR_PIO1_BD
 	LD   H, 0FCH
 	LD   L, 00H
 	CALL PIOINIT
 
+		;A/D	
+	LD   C, IO_ADDR_PIO0_AC
+	LD   D, IO_ADDR_PIO0_AD
+	LD   H, 0F8H
+	LD   L, AD_CS
+	CALL PIOINIT
+
+	LD   A, AD_CS
+	LD   (SHADOW_AD), A
+	
 	LD   A, 0
 	LD   (SHADOW_A), A
 	LD   A, 0
@@ -108,7 +129,19 @@ START:	LD  SP, 9000H
 	     
 	     ;	       LD  HL, BAN
 	     ;CALL DSTR
-	     
+
+AD:	       ld d, 2
+	       call     SDATA8
+	
+		CALL	 ADSAMPLE
+		LD       (ADS0), BC
+
+	       LD A, 'A'
+	       ADD    C
+	;call DDATA8
+	JR     AD
+	
+	
 LOOP:	JR   LOOP
 
      DSTR: LD A,(HL)
@@ -122,8 +155,61 @@ LOOP:	JR   LOOP
 	     INC HL
 	     JR DSTR
 
+	;; get sample from AD
+ADSAMPLE:
+
+	CALL CLK_LOW
+	CALL CS_LOW
+	CALL DIN_HIGH     	; START bit
+
+
+	CALL CLK_LOW
+	CALL DIN_HIGH           ;SGL
+	CALL CLK_HIGH
+
+	;; Channel 0
+	CALL CLK_LOW
+	CALL DIN_LOW
+	CALL CLK_HIGH
+	CALL CLK_LOW
+	CALL DIN_LOW
+	CALL CLK_HIGH
+	CALL CLK_LOW
+	CALL DIN_LOW
+	CALL CLK_HIGH
+
+	;;  two clocks for sample
+	CALL CLK_LOW
+	CALL DIN_LOW
+	CALL CLK_HIGH
+	CALL CLK_LOW
+	CALL DIN_LOW
+	CALL CLK_HIGH
+
+	;; Clock out 10 bits of data
+	LD	D, 10
+	LD      BC, 0    	;result
+
+GETLOOP:
+        CALL  CLK_HIGH
+	CALL GET_DATABIT
+
+	;; Shift up
+	SLA     C
+	RL      B
+	AND     1
+	OR      C
+	LD      C, A
+	CALL   CLK_LOW
+
+	DEC D
+	JR   NZ, GETLOOP
+
+	CALL CS_HIGH
+
+	RET
 	     
-DELAY:
+DELAY:  ;RET
 	LD   H,02H   
           ; 
 LOOPH:    LD   L,0FFH   
@@ -270,4 +356,102 @@ SDATA4: CALL  RS_LOW
 	OUT   (C), A
 	CALL  E_LOW
 	CALL  RS_HIGH
+	RET
+
+	;; --------------------------------------------------------------------------------
+	;;
+	;;  A/D subroutines
+	;;
+	;;
+
+CS_LOW: PUSH    BC
+        PUSH    DE
+	LD    C, IO_ADDR_PIO0_AD
+	LD    HL,SHADOW_AD
+	LD    A, (HL)
+	RES   0, A
+	LD    (HL), A
+	OUT   (C), A
+	POP   DE
+	POP   BC
+	
+	RET
+
+CS_HIGH: PUSH    BC
+        PUSH    DE
+	LD    C, IO_ADDR_PIO0_AD
+	LD    HL,SHADOW_AD
+	LD    A, (HL)
+	SET   0, A
+	LD    (HL), A
+	OUT   (C), A
+	POP   DE
+	POP   BC
+	
+	RET
+
+CLK_LOW: PUSH    BC
+        PUSH    DE
+	LD    C, IO_ADDR_PIO0_AD
+	LD    HL,SHADOW_AD
+	LD    A, (HL)
+	RES   1, A
+	LD    (HL), A
+	OUT   (C), A
+	POP   DE
+	POP   BC
+	
+	RET
+
+CLK_HIGH: PUSH    BC
+        PUSH    DE
+	LD    C, IO_ADDR_PIO0_AD
+	LD    HL,SHADOW_AD
+	LD    A, (HL)
+	SET   1, A
+	LD    (HL), A
+	OUT   (C), A
+	POP   DE
+	POP   BC
+	
+	RET
+
+DIN_LOW: PUSH    BC
+        PUSH    DE
+	LD    C, IO_ADDR_PIO0_AD
+	LD    HL,SHADOW_AD
+	LD    A, (HL)
+	RES   2, A
+	LD    (HL), A
+	OUT   (C), A
+	POP   DE
+	POP   BC
+	
+	RET
+
+DIN_HIGH: PUSH    BC
+        PUSH    DE
+	LD    C, IO_ADDR_PIO0_AD
+	LD    HL,SHADOW_AD
+	LD    A, (HL)
+	SET   2, A
+	LD    (HL), A
+	OUT   (C), A
+	POP   DE
+	POP   BC
+	
+	RET
+
+GET_DATABIT: PUSH    BC
+        PUSH    DE
+	LD    C, IO_ADDR_PIO0_AD
+	IN     A, (C)
+	AND    08H
+	SRL    A
+	SRL    A
+	SRL    A	
+	
+	POP   DE
+	POP   BC
+	
 	RET
