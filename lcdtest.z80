@@ -54,6 +54,8 @@ START:	LD  SP, 9000H
 	LD   A, AD_CS
 	LD   (SHADOW_AD), A
 	
+        ;JP  AD
+
 	LD   A, 0
 	LD   (SHADOW_A), A
 	LD   A, 0
