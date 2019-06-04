@@ -785,7 +785,7 @@ Symbol['~' 12.00mil]
 	SymbolLine[15.00mil 35.00mil 20.00mil 35.00mil 8.00mil]
 	SymbolLine[20.00mil 35.00mil 25.00mil 30.00mil 8.00mil]
 )
-Attribute("PCB::grid::unit" "mil")
+Attribute("PCB::grid::unit" "mm")
 Attribute("PCB::grid::size" "0.10mil")
 Via[1350.00mil 2990.00mil 36.00mil 20.00mil 0.0000 20.00mil "" ""]
 Via[1610.00mil 2450.00mil 36.00mil 20.00mil 0.0000 20.00mil "" ""]
@@ -1460,7 +1460,7 @@ Element["" "res300" "R6" "4k7" 46.4600mm 18.3800mm 1.4444mm -0.7016mm 0 100 ""]
 
 	)
 
-Element["" "res300" "R3" "1M" 25.0756mm 11.1066mm -0.9202mm -1.7086mm 0 100 ""]
+Element["" "res300" "R3" "1M" 25.0756mm 11.1066mm -2.4239mm -1.7365mm 0 100 ""]
 (
 	Pin[0.0000 0.0000 55.00mil 30.00mil 61.00mil 30.00mil "1" "1" "square"]
 	Pin[0.0000 300.00mil 55.00mil 30.00mil 61.00mil 30.00mil "2" "2" ""]
@@ -2359,7 +2359,7 @@ Element["" "SIP9" "CONN5" "unknown" 5401.00mil 3686.00mil 96.00mil -30.00mil 0 1
 
 	)
 
-Element["" "res300" "R14" "190R" 5053.00mil 2443.00mil 25.00mil 0.0000 3 100 ""]
+Element["" "res300" "R14" "190R" 5053.00mil 2443.00mil -144.30mil 109.10mil 0 100 ""]
 (
 	Pin[0.0000 0.0000 55.00mil 30.00mil 61.00mil 30.00mil "1" "1" "square"]
 	Pin[0.0000 300.00mil 55.00mil 30.00mil 61.00mil 30.00mil "2" "2" ""]
@@ -2372,7 +2372,7 @@ Element["" "res300" "R14" "190R" 5053.00mil 2443.00mil 25.00mil 0.0000 3 100 ""]
 
 	)
 
-Element["" "0805" "D3" "unknown" 5264.00mil 59.4759mm -16.50mil -147.07mil 1 100 ""]
+Element["" "0805" "D3" "unknown" 5264.00mil 59.4759mm -0.7468mm -3.8143mm 0 100 ""]
 (
 	Pad[-3.93mil 35.43mil 3.93mil 35.43mil 51.18mil 20.00mil 57.18mil "1" "1" "square"]
 	Pad[-3.93mil -35.43mil 3.93mil -35.43mil 51.18mil 20.00mil 57.18mil "2" "2" "square"]
@@ -2381,7 +2381,7 @@ Element["" "0805" "D3" "unknown" 5264.00mil 59.4759mm -16.50mil -147.07mil 1 100
 
 	)
 
-Element["" "0805" "D2" "unknown" 5050.00mil 59.3489mm -64.50mil -101.07mil 1 100 ""]
+Element["" "0805" "D2" "unknown" 5050.00mil 59.3489mm -1.4097mm -3.4638mm 0 100 ""]
 (
 	Pad[-3.93mil 35.43mil 3.93mil 35.43mil 51.18mil 20.00mil 57.18mil "1" "1" "square"]
 	Pad[-3.93mil -35.43mil 3.93mil -35.43mil 51.18mil 20.00mil 57.18mil "2" "2" "square"]
@@ -2390,7 +2390,7 @@ Element["" "0805" "D2" "unknown" 5050.00mil 59.3489mm -64.50mil -101.07mil 1 100
 
 	)
 
-Element["" "res300" "R13" "190R" 5260.00mil 2442.00mil 50.00mil 35.00mil 3 100 ""]
+Element["" "res300" "R13" "190R" 5260.00mil 2442.00mil 46.00mil 114.00mil 0 100 ""]
 (
 	Pin[0.0000 0.0000 55.00mil 30.00mil 61.00mil 30.00mil "1" "1" "square"]
 	Pin[0.0000 300.00mil 55.00mil 30.00mil 61.00mil 30.00mil "2" "2" ""]
@@ -6392,9 +6392,9 @@ Layer(10 "silk")
 	Line[-16.00mil 288.00mil 6284.00mil 288.00mil 10.00mil 20.00mil "clearline"]
 	Text[4623.00mil 3268.00mil 0 100 "CTC IO" "clearline"]
 	Text[5505.00mil 3578.00mil 0 100 "AUXIO" "clearline"]
-	Text[4750.00mil 2622.00mil 0 100 "Z80 Arduino Shield" "clearline"]
-	Text[4749.00mil 2759.00mil 0 100 "2019" "clearline"]
-	Text[4753.00mil 2694.00mil 0 100 "V2.0" "clearline"]
+	Text[4923.00mil 71.2140mm 0 100 "Z80 Arduino Shield" "clearline"]
+	Text[4946.40mil 2951.20mil 0 100 "2019" "clearline"]
+	Text[4931.20mil 2886.20mil 0 100 "V2.0" "clearline"]
 )
 NetList()
 (
