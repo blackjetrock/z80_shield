@@ -1358,7 +1358,7 @@ Element["" "DIP16" "U40" "unknown" 12.7600mm 13.8700mm -0.6426mm -3.1350mm 0 100
 
 	)
 
-Element["" "RADIAL_CAN-200" "C8" "unknown" 85.4000mm 3.3800mm 1.8692mm 0.0218mm 0 100 ""]
+Element["" "RADIAL_CAN-200" "C8" "unknown" 85.4000mm 3.3800mm 1.7574mm 0.3545mm 0 100 ""]
 (
 	Pin[0.0000 0.0000 60.00mil 30.00mil 66.00mil 30.00mil "+" "1" "square"]
 	Pin[-100.00mil 0.0000 60.00mil 30.00mil 66.00mil 30.00mil "-" "2" ""]
@@ -1366,7 +1366,7 @@ Element["" "RADIAL_CAN-200" "C8" "unknown" 85.4000mm 3.3800mm 1.8692mm 0.0218mm 
 
 	)
 
-Element["" "DIP16" "U10" "unknown" 72.3686mm 68.2288mm -1.0664mm -3.1326mm 0 100 ""]
+Element["" "DIP16" "U10" "unknown" 72.3686mm 68.2288mm -1.1223mm -4.8547mm 0 100 ""]
 (
 	Pin[0.0000 0.0000 60.00mil 30.00mil 66.00mil 28.00mil "A" "1" "square"]
 	Pin[0.0000 100.00mil 60.00mil 30.00mil 66.00mil 28.00mil "B" "2" ""]
@@ -1660,7 +1660,7 @@ Element["" "ic-soic-16-n" "U14" "unknown" 149.6249mm 36.7000mm -8.0565mm 2.6469m
 
 	)
 
-Element["" "0805" "C11" "1uF" 46.3659mm 890.00mil -0.9090mm 46.50mil 0 100 ""]
+Element["" "0805" "C11" "1uF" 46.3659mm 890.00mil -2.3517mm 57.50mil 0 100 ""]
 (
 	Pad[35.43mil -3.93mil 35.43mil 3.93mil 51.18mil 20.00mil 57.18mil "1" "1" "square"]
 	Pad[-35.43mil -3.93mil -35.43mil 3.93mil 51.18mil 20.00mil 57.18mil "2" "2" "square"]
@@ -1696,7 +1696,7 @@ Element["" "0805" "C2" "100nF" 78.6021mm 2590.00mil -2.3023mm -121.50mil 0 100 "
 
 	)
 
-Element["" "DIP20" "U13" "unknown" 60.6780mm 68.4620mm -1.1568mm -3.2068mm 0 100 ""]
+Element["" "DIP20" "U13" "unknown" 60.6780mm 68.4620mm -0.3796mm -5.2591mm 0 100 ""]
 (
 	Pin[0.0000 0.0000 60.00mil 30.00mil 66.00mil 28.00mil "_OUT_" "1" "square"]
 	Pin[0.0000 100.00mil 60.00mil 30.00mil 66.00mil 28.00mil "1D" "2" ""]
@@ -1766,7 +1766,7 @@ Element["" "DIP28" "U8" "unknown" 31.6520mm 37.2340mm -0.9458mm -3.3032mm 0 100 
 
 	)
 
-Element["" "DIP40" "U9" "unknown" 57.0200mm 8.1500mm -0.7370mm -3.0924mm 0 100 ""]
+Element["" "DIP40" "U9" "unknown" 57.0200mm 8.1500mm -1.5676mm -3.0365mm 0 100 ""]
 (
 	Pin[0.0000 0.0000 60.00mil 30.00mil 66.00mil 28.00mil "D2" "1" "square"]
 	Pin[0.0000 100.00mil 60.00mil 30.00mil 66.00mil 28.00mil "D7" "2" ""]
@@ -2099,7 +2099,7 @@ Element["" "DIP28" "U12" "unknown" 95.6900mm 61.9620mm -0.9366mm -3.2454mm 0 100
 
 	)
 
-Element["" "DIP16" "U43" "unknown" 3305.00mil 2686.00mil -34.00mil -129.00mil 0 100 ""]
+Element["" "DIP16" "U43" "unknown" 3305.00mil 2686.00mil -58.10mil -185.70mil 0 100 ""]
 (
 	Pin[0.0000 0.0000 60.00mil 30.00mil 66.00mil 28.00mil "A" "1" "square"]
 	Pin[0.0000 100.00mil 60.00mil 30.00mil 66.00mil 28.00mil "B" "2" ""]
@@ -2323,7 +2323,7 @@ Element["" "DIP40" "U1" "unknown" 10.6354mm 42.3210mm 14.1088mm -3.0708mm 0 100 
 
 	)
 
-Element["" "SIP7" "CONN4" "unknown" 4870.00mil 3381.00mil -251.00mil -35.00mil 0 100 ""]
+Element["" "SIP7" "CONN4" "unknown" 4870.00mil 3381.00mil -273.40mil -29.40mil 0 100 ""]
 (
 	Pin[0.0000 0.0000 60.00mil 30.00mil 66.00mil 28.00mil "1" "1" "square,edge2"]
 	Pin[100.00mil 0.0000 60.00mil 30.00mil 66.00mil 28.00mil "2" "2" "edge2"]
@@ -2381,7 +2381,7 @@ Element["" "0805" "D3" "unknown" 5264.00mil 59.4759mm -0.7468mm -3.8143mm 0 100 
 
 	)
 
-Element["" "0805" "D2" "unknown" 5050.00mil 59.3489mm -1.4097mm -3.4638mm 0 100 ""]
+Element["" "0805" "D2" "unknown" 5050.00mil 59.3489mm -55.50mil -3.4638mm 0 100 ""]
 (
 	Pad[-3.93mil 35.43mil 3.93mil 35.43mil 51.18mil 20.00mil 57.18mil "1" "1" "square"]
 	Pad[-3.93mil -35.43mil 3.93mil -35.43mil 51.18mil 20.00mil 57.18mil "2" "2" "square"]
@@ -4772,7 +4772,6 @@ Layer(1 "top")
 	Line[66.3561mm 76.0820mm 65.3402mm 77.0979mm 10.00mil 20.00mil "clearline"]
 	Line[65.3402mm 77.0979mm 59.5719mm 77.0979mm 10.00mil 20.00mil "clearline"]
 	Line[59.5719mm 77.0979mm 2320.00mil 3010.00mil 10.00mil 20.00mil "clearline"]
-	Line[2318.20mil 3036.80mil 2370.50mil 3036.80mil 10.00mil 20.00mil "clearline"]
 	Line[2350.80mil 3320.00mil 2356.50mil 3320.00mil 10.00mil 20.00mil "clearline"]
 	Line[2356.50mil 3320.00mil 60.2450mm 84.7179mm 10.00mil 20.00mil "clearline"]
 	Line[60.2450mm 84.7179mm 73.2549mm 84.7179mm 10.00mil 20.00mil "clearline"]
@@ -6390,11 +6389,11 @@ Layer(10 "silk")
 	Line[299.6000mm 197.6000mm 299.8000mm 197.8000mm 25.00mil 20.00mil "clearline"]
 	Line[0.2000mm 197.8000mm 0.0000 198.0000mm 25.00mil 20.00mil "clearline"]
 	Line[-16.00mil 288.00mil 6284.00mil 288.00mil 10.00mil 20.00mil "clearline"]
-	Text[4623.00mil 3268.00mil 0 100 "CTC IO" "clearline"]
+	Text[4592.20mil 3294.60mil 0 100 "CTC IO" "clearline"]
 	Text[5505.00mil 3578.00mil 0 100 "AUXIO" "clearline"]
-	Text[4923.00mil 71.2140mm 0 100 "Z80 Arduino Shield" "clearline"]
-	Text[4946.40mil 2951.20mil 0 100 "2019" "clearline"]
-	Text[4931.20mil 2886.20mil 0 100 "V2.0" "clearline"]
+	Text[5728.90mil 3327.90mil 0 100 "Z80 Arduino Shield" "clearline"]
+	Text[5743.60mil 3453.60mil 0 100 "2019" "clearline"]
+	Text[5737.10mil 3392.90mil 0 100 "V2.0" "clearline"]
 )
 NetList()
 (
