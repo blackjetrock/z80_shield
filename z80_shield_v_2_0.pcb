@@ -1498,7 +1498,7 @@ Element["" "DIP14" "U42" "unknown" 34.1080mm 14.2940mm -0.7640mm -3.1392mm 0 100
 
 	)
 
-Element["" "0805" "C4" "100nF" 16.6986mm 39.7041mm -33.79mil -112.50mil 0 100 ""]
+Element["" "0805" "C4" "100nF" 16.6986mm 39.7041mm 18.81mil -129.20mil 0 100 ""]
 (
 	Pad[35.43mil -3.93mil 35.43mil 3.93mil 51.18mil 20.00mil 57.18mil "1" "1" "square"]
 	Pad[-35.43mil -3.93mil -35.43mil 3.93mil 51.18mil 20.00mil 57.18mil "2" "2" "square"]
