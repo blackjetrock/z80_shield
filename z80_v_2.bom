@@ -1,0 +1,54 @@
+refdes	device	value	
+R14	RESISTOR	220R	
+R13	RESISTOR	220R	
+D3	LED	unknown	               // Green mark towards Dx marking on PCB
+D2	LED	unknown	
+CONN5	CONNECTOR_9	unknown	
+CONN4	CONNECTOR_7	unknown	
+S1	SPST	unknown	
+C17	RESISTOR	4k7	        // Changed from cap to resistor
+CONN3	unknown	unknown	
+U5	Arduino-mega-Digital IO	unknown	
+R12	RESISTOR	1k	
+R11	RESISTOR	1k	
+R10	RESISTOR	1k	
+R9	RESISTOR	1k	
+U43	74138	unknown	
+C15	POLARIZED_CAPACITOR	10uF	// not fitted at present
+C14	POLARIZED_CAPACITOR	10uF	//    "        "
+C13	POLARIZED_CAPACITOR	10uF	//    "        "
+R8	RESISTOR	1k	
+R7	RESISTOR	1k	
+C12	CAPACITOR	100nF	
+U40	74153	unknown	
+R6	RESISTOR	4k7	
+C11	CAPACITOR	1uF	
+C10	POLARIZED_CAPACITOR	unknown	   // not fitted at present
+R5	RESISTOR	0R	              // use wire from cut off resistor leg
+R4	RESISTOR	nopop	
+C9	CAPACITOR	nopop	
+D1	DIODE	unknown	nopop
+C8	POLARIZED_CAPACITOR	unknown	   // not fitted at present
+U37	TLV1117xDCY	unknown	
+C7	CAPACITOR	22pF	
+C6	CAPACITOR	22pF	
+U36	CRYSTAL	        4.5 MHz            // Mount in air so no shorting to components
+R3	RESISTOR	6k8	
+U42	7404	unknown	
+U14	MCP3008	unknown	
+J4	arduino_header	unknown	
+R2	RESISTOR	1k	
+U13	74574	unknown	
+U12	Z80CTC	unknown	
+U11	Z80PIO	unknown	
+U10	74138	unknown	
+R1	RESISTOR	1k	
+C5	CAPACITOR	100nF	
+C4	CAPACITOR	100nF	
+C3	CAPACITOR	100nF	
+C2	CAPACITOR	100nF	
+C1	CAPACITOR	100nF	
+U9	Z80PIO	unknown	
+U8	62256	unknown	
+U7	29x040	unknown	
+U1	Z80	unknown	

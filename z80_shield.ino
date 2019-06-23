@@ -28,51 +28,51 @@ int example_code_length;
 
 // Pin definitions
 
-const int D0_Pin      = 21;
-const int D1_Pin      = 19;
-const int D2_Pin      = 10;
-const int D3_Pin      = 59;
-const int D4_Pin      = 60;
-const int D5_Pin      = 61;
-const int D6_Pin      = 62;
-const int D7_Pin      = 63;
+const int D0_Pin      = 30;
+const int D1_Pin      = 31;
+const int D2_Pin      = 32;
+const int D3_Pin      = 33;
+const int D4_Pin      = 34;
+const int D5_Pin      = 35;
+const int D6_Pin      = 36;
+const int D7_Pin      = 37;
 
-const int A0_Pin      = 9;
-const int A1_Pin      = 8;
-const int A2_Pin      = 7;
-const int A3_Pin      = 6;
-const int A4_Pin      = 5;
-const int A5_Pin      = 4;
-const int A6_Pin      = 3;
-const int A7_Pin      = 2;
-const int A8_Pin      = 64;
-const int A9_Pin      = 65;
-const int A10_Pin     = 66;
-const int A11_Pin     = 67;
-const int A12_Pin     = 68;
-const int A13_Pin     = 69;
-const int A14_Pin     = 53;
-const int A15_Pin     = 52;
+const int A0_Pin      = 22;
+const int A1_Pin      = 23;
+const int A2_Pin      = 24;
+const int A3_Pin      = 25;
+const int A4_Pin      = 26;
+const int A5_Pin      = 27;
+const int A6_Pin      = 28;
+const int A7_Pin      = 29;
+const int A8_Pin      = 53;
+const int A9_Pin      = 52;
+const int A10_Pin     = 51;
+const int A11_Pin     = 50;
+const int A12_Pin     = 10;
+const int A13_Pin     = 11;
+const int A14_Pin     = 12;
+const int A15_Pin     = 13;
 
-const int BUSREQ_Pin  = 28;
-const int BUSACK_Pin  = 24;
-const int WR_Pin      = 32;
-const int RD_Pin      = 34;
-const int MREQ_Pin    = 30;
+const int BUSREQ_Pin  = 45;
+const int BUSACK_Pin  = 44;
+const int WR_Pin      = 48;
+const int RD_Pin      = 49;
+const int MREQ_Pin    = 47;
 const int IOREQ_Pin   = 46;
-const int HALT_Pin    = 22;
-const int NMI_Pin     = 39;
-const int INT_Pin     = 18;
-const int M1_Pin      = 35;
-const int WAIT_Pin    = 37;
-const int A_CLK_Pin   = 41;
-const int A_RES_Pin   = 33;
-const int RFSH_Pin    = 31;
-const int SW0_Pin     = 29;
-const int SW1_Pin     = 25;
+const int HALT_Pin    = 43;
+const int NMI_Pin     = 41;
+const int INT_Pin     = 42;
+const int M1_Pin      = 39;
+const int WAIT_Pin    = 40;
+const int A_CLK_Pin   = 4;
+const int A_RES_Pin   = 5;
+const int RFSH_Pin    = 38;
+const int SW0_Pin     = 6;
+const int SW1_Pin     = 7;
 
-const int MAPRQM_Pin  = 36;
-const int MAPRQI_Pin  = 38;
+const int MAPRQM_Pin  = 2;
+const int MAPRQI_Pin  = 3;
 
 const int address_pins[] =
   {
