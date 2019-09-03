@@ -140,7 +140,8 @@ AD:	       ld d, 2
 
 	       LD A, 'A'
 	       ADD    C
-	;call DDATA8
+	       LD D, A
+	 call DDATA8
 	JR     AD
 	
 	
@@ -157,14 +158,45 @@ LOOP:	JR   LOOP
 	     INC HL
 	     JR DSTR
 
-	;; get sample from AD
+; A quick test to see if we can get samples from the A/D
+;
+
 ADSAMPLE:
 
-	CALL CLK_LOW
+; Set up ready for transfer
+	CALL CLK_HIGH
+	
+; Enable chip	
 	CALL CS_LOW
+
+; There now needs to be seven clock pulses and low data as
+; a preamble
+
+	CALL CLK_LOW
+        CALL CLK_HIGH
+	CALL CLK_LOW
+        CALL CLK_HIGH
+	CALL CLK_LOW
+        CALL CLK_HIGH
+	CALL CLK_LOW
+        CALL CLK_HIGH
+	CALL CLK_LOW
+        CALL CLK_HIGH
+	CALL CLK_LOW
+        CALL CLK_HIGH
+	CALL CLK_LOW
+        CALL CLK_HIGH
+
+        CALL CLK_LOW
+	
+; Now set up start bit
 	CALL DIN_HIGH     	; START bit
 
+;And clock it in
 
+        CALL CLK_HIGH
+
+; Single ended/ Differential bit
 	CALL CLK_LOW
 	CALL DIN_HIGH           ;SGL
 	CALL CLK_HIGH
@@ -173,9 +205,11 @@ ADSAMPLE:
 	CALL CLK_LOW
 	CALL DIN_LOW
 	CALL CLK_HIGH
+	
 	CALL CLK_LOW
 	CALL DIN_LOW
 	CALL CLK_HIGH
+	
 	CALL CLK_LOW
 	CALL DIN_LOW
 	CALL CLK_HIGH
@@ -184,6 +218,7 @@ ADSAMPLE:
 	CALL CLK_LOW
 	CALL DIN_LOW
 	CALL CLK_HIGH
+	
 	CALL CLK_LOW
 	CALL DIN_LOW
 	CALL CLK_HIGH
