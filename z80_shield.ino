@@ -8,7 +8,7 @@ typedef void (*FPTR)();
 typedef void (*CMD_FPTR)(String cmd);
 
 void run_bsm(int stim);
-char * bsm_state_name();
+String bsm_state_name();
 unsigned int addr_state();
 unsigned int data_state();
 
@@ -248,7 +248,7 @@ struct TRANSITION
 struct STATE
 {
   int        statenum;
-  char       *state_name;
+  String     state_name;
   FPTR       entry[NUM_ENTRY];
   TRANSITION trans[NUM_TRANS];
 };
@@ -511,7 +511,7 @@ void entry_mem_rd_end()
       // }
 }
 
-char * bsm_state_name()
+String bsm_state_name()
 {
   int i = find_state_index(current_state);
   return(bsm[i].state_name);
@@ -847,6 +847,8 @@ void flash_write_byte(int bank, int addr, BYTE data)
 // Erase sector
 void flash_erase(int cmd, int sector)
 {
+  (void)sector;
+
   // Perform flash erase cycle
   write_cycle(0x5555, 0xAA, SIG_MREQ);
   write_cycle(0x2AAA, 0x55, SIG_MREQ);
@@ -1302,6 +1304,7 @@ void run_bsm(int stim)
 
 void cmd_grab_z80(String cmd)
 {
+  (void)cmd;
   String arg;
   
   Serial.println("Grabbing Z80");
@@ -1992,6 +1995,8 @@ void cmd_set_example_code(String cmd)
 
 void cmd_show_example_code(String cmd)
 {
+  (void)cmd;
+
   Serial.println("Example Code");
   
   for(int i=0; code_list[i].code != 0; i++)
@@ -2020,19 +2025,24 @@ void cmd_show_example_code(String cmd)
 
 void cmd_run_test_code(String cmd)
 {
+  (void)cmd;
 }
 
 // Traces test code at the t state level, all cycles are shown
 
 void cmd_trace_test_code(String cmd)
 {
+  (void)cmd;
   boolean running = true;
+
+#ifdef __UNUSED_CODE__
   int cycle_type = CYCLE_NONE;
   int cycle_dir = CYCLE_DIR_NONE;
   int cycle_n = 0;
+#endif
   
   int fast_mode_n = 0;
-  int trigger_address = 0x8000;    // trigger when we hit RAm by default
+  unsigned int trigger_address = 0x8000;    // trigger when we hit RAm by default
   boolean trigger_on = false;
   
   // We have a logical address space for the array of code such that the code starts at
@@ -2080,9 +2090,11 @@ void cmd_trace_test_code(String cmd)
       int wr = signal_state("WR");
       int rd = signal_state("RD");
       int mreq = signal_state("MREQ");
+#ifdef __UNUSED_CODE__
       int ioreq = signal_state("IOREQ");
       int maprqm = signal_state("MAPRQM");
       int last_addr = -1;
+#endif
       
       if ( (rd == HIGH) )
 	{
@@ -2092,6 +2104,7 @@ void cmd_trace_test_code(String cmd)
       
       if ( (wr == LOW) && (mreq == LOW) )
 	{
+#ifdef __UNUSED_CODE__
 	  cycle_dir = CYCLE_DIR_WR;
 
 	  // Write cycle
@@ -2099,18 +2112,20 @@ void cmd_trace_test_code(String cmd)
 	    {
 	      cycle_type = CYCLE_MEM;
 	    }
+#endif
 	}
 
       // Read cycle, put data on the bus, based on address, only emulate FLASH for now
       if ( (rd == LOW) && (mreq == LOW) && (addr_state() < 0x8000))
 	{
+#ifdef __UNUSED_CODE__
 	  cycle_dir = CYCLE_DIR_RD;
-	  
 	  // Write cycle
 	  if (mreq == LOW )
 	    {
 	      cycle_type = CYCLE_MEM;
 	    }
+#endif	  
 	}
       
       // If we are running t states then skip the menu stuff.
@@ -2119,7 +2134,7 @@ void cmd_trace_test_code(String cmd)
       if ( fast_mode )
 	{
 	  // Give an indication of execution by displaying every
-	  #if 0
+#if 0
 	  if( addr_state()!=last_addr  )
 	    {
 	      Serial.println(to_hex(addr_state(), 4));
@@ -2293,6 +2308,7 @@ void cmd_trace_test_code(String cmd)
 
 void cmd_memory(String cmd)
 {
+  (void)cmd;
 
   boolean running = true;
   boolean cmdloop = true;
@@ -2484,6 +2500,7 @@ void cmd_memory(String cmd)
 // Null cmd function
 void cmd_dummy(String cmd)
 {
+  (void)cmd;
 }
 
 String cmd;
