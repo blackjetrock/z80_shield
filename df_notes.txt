@@ -1,0 +1,251 @@
+Cutting Tracks
+==============
+
+As per email to AM:
+
+I've never cut a track before. You might think it's trivial, but I started
+with questions. How hard do I need to press? Will a scratch do or do I need my
+Dremel with a diamond bit? (I'm itching to find a reason to use one of those.) 
+Only one way to find out. Scalpel applied.
+
+Um, have I done it correctly? How do I tell? So I started chasing tracks along
+the board and through the vias, getting more and more frustrated with how hard
+this was. So I gave up on that and started poring over the schematic (now
+making more sense). I started to understand.
+
+U9-8 (SW1) is connected to U40-2. U9-9 is connected to U40-14. I checked these
+with my multimeter on the 2nd board you gave me (the one I hadn't
+touched). Correct! I checked them on the board I'd cut. Connections still
+there! Huh? I checked my cuts with the loupe and decided I hadn't cut deep
+enough. So I had another hack and checked again. Connections severed! Huzzah!
+
+Then I checked again with the loupe and noticed I'd scratched at the track
+above U9-8's. Oops. See attached. Chasing it along the board I found it goes
+to U42-10, which according to the schematic it joins to D2. I checked, and
+yes, mine is still thus connected. Phew.
+
+
+Soldering Flash
+===============
+
+Device is a MBM29F040 512KB device, U7 on the schematic (towards the
+bottom). The PCB is marked with both a cut off corner and a dot on one
+side. Orient the device correctly. Clamp or tape the chip into position. Get
+it absolutely right before you begin soldering. You can remove the clamp or
+tape once you've got a handful of the pins soldered.
+
+There's a knack to soldering such tiny joints. Each to their own,
+but I put the smallest point on my soldering iron, then put it at the base of
+the pin/pad, touched the solder to it, then flicked the iron tip upwards, up
+the pin, the moment the solder melts. A bit of the solder goes around the pad
+and the excess harmlessly coats the pin.
+
+
+Soldering A/D Converter
+=======================
+
+Device is a MCP3008 8 channel analogue to digital converter, U14 on the
+schematic. FIXME: what's it for? Looks like a facility for the shield, is it
+used on the board?
+
+Another tricky soldering exercise, and different shape to the flash
+chip. The idea is much the same: clamp it, solder a couple of pins carefully,
+then remove the clamp and do the others. It's easier than the flash because
+the pin and pad it connects to are easily visible and accessible.
+
+Pin 1 isn't marked as square on the PCB. I'm going by the D shaped cutout on
+the PCB white lining and the dot on the surface of the IC here.
+
+
+Voltage Regulator
+=================
+
+Device is an LM1117 3.3V voltage regulator, U37 on the schematic (left
+side). This reduces the normal 5V which the whole board uses to 3.3V. Its 3.3V
+output is used for one purpose: to provide 3.3V to the Arduino shield
+connector. Some shields require 3.3V, and that's the only reason this
+regulator is necessary. It's not used anywhere else on the rest of the board.
+
+
+SM Capacitors C1-C5, and C12
+============================
+
+These 6 capacitors are all 100nF. (Mine are 220nF which Andrew says are fine
+for this purpose.) They bridge the 5V and ground lines in various places to
+smooth current flow.
+
+The first time I tried to solder one I picked it up with tweezers and it went
+ping. No idea where that one landed and it's not going to be possible to find
+it. Lesson learned. I have some spares. I picked up another one. :) The
+technique is to lay down a little bit of solder on one pad, pick up the
+component with tweezers in the left hand, melt that little bit of solder using
+the iron in the right hand, then position the component into the melted
+solder. The other end is then simple. It's not as hard as it sounds, but the
+loupe is essential (for my eyes) so I can ensure it's bridging the gap between
+the pads on the PCB.
+
+
+SM Capacitors C6-C7
+===================
+
+These 2 capacitors are 22pF and are part of the oscillator which generates the
+Z80's clock when the board is running in single board mode (i.e. when the board,
+not the Arduino, is providing the Z80's clock).
+
+
+C8, C9, C10
+===========
+
+Not fitted in the current design, see Bill of Materials for clarification.
+
+
+SM C11
+======
+
+This is a 1uF capacitor used in the reset switch circuit.
+
+
+SM Resistor C17
+===============
+
+The original design had this as a capacitor, but it's been updated and this is
+now a 4.7K resistor. It retains its 'C' designation from the original
+design. See the Bill of Materials for clarification.
+
+
+C13, C14, C15
+=============
+
+Not fitted in the current design, see Bill of Materials for clarification.
+
+
+D1
+==
+
+Not fitted in the current design. Bill of Materials confirms "nopop".
+
+
+LEDs
+====
+
+The 2 LEDs, D2 and D3, the last of the surface mount component. These have to
+be soldered the right way round (or they won't work) and the right way up (or
+you won't see the light!).
+
+The cathode is marked with a green tag. That goes towards the Dx label on the
+PCB. Use a multimeter in 200ohm mode: touch the red probe to the end of the
+LED nearest the R13/R14 resistor and the black probe to the other end. The LED
+should light.
+
+(Check with Andrew whether this all applies to all types of SM LEDs.)
+
+
+Resistors
+=========
+
+We mounted resistor C17 earlier, it's a surface mount one. The rest are
+conventional size and easier to deal with.
+
+There are 8 1K ohm pull up/down resistors: R1, R2, R7, R8, R9, R10, R11 and
+R12.
+
+R3 is described on the schematic as 1M ohm, but is in the Bill of Materials as
+6.8K ohm. 6.8K is correct, and is supplied in the box. That one's part of the
+oscillator.
+
+R6 is 4.7K ohm and is part of the reset circuit.
+
+
+Crystal
+=======
+
+U36 is the 4.5Mhz crystal which clocks the Z80 when the board is running in
+standalone mode (i.e. not connected to the Arduino). It can be mounted either
+way round, but with v2.0 boards needs to be mounted a bit above the other
+circuitry because there's not quite enough room for it to sit flush on the
+board. Later boards have had a slight redesign of the layout and this isn't a
+problem.
+
+
+Sockets
+=======
+
+All the ICs are socketed, making them easy to put in place. The sockets need
+to be soldered to the board, but they're very straightforward. The only thing
+to watch for is the cut out 'D' at one end. That should match the white line
+graphic on the board. This is not because the socket needs to be a certain way
+round, but because the IC which plugs into the socket needs to be a certain
+way round. Keep it simple - get the sockets matching the board graphics.
+
+A lump of plasticine helps to hold the socket in place while you turn the
+board over and solder one pin. That's then normally enough to keep the socket
+in place while you go down the line soldering all the pins to the board.
+
+
+Shield Sockets
+==============
+
+There are 4 lines of socket connectors for any standard Arduino shield to plug
+into. These are simple to solder into place, again using plasticine or tape to
+hold them while you solder the first pin. Take a little extra time with these
+to ensure they line up squarely. Shields will be difficult to plug in if the
+connectors aren't correctly aligned.
+
+
+Arduino Connectors
+==================
+
+The Arduino connector pins are on the underside of the board, and hence
+soldered into place from the top. Access to these can be a little tight given
+that the IC sockets are already in place.
+
+
+Fix Wires
+=========
+
+The tracks which were cut in step 1 now need to be reconnected to the connect
+place. We're connecting the Arduino's pins 6 and 7 to U40 pins 14 and 2
+respectively.
+
+The Arduino pins 6 and 7 are digital GPIOs 2 and 3 on an Arduino Mega. The
+Arduino software will use these to ... <do something>. They're being directed
+to U40, the <something> for <some reason>.
+
+
+Plug in the ICs
+===============
+
+The final task is to plug the ICs (the "chips") into their sockets. U1, the
+big one towards the bottom left of the board is the Z80. We're using a Toshiba
+variant for this project. The other two big ones are U9 and U11, which are the
+parallel IO devices. U12 is the medium sized Zilog CTC chip towards the bottom
+right. That's the timer device. The other medium sized chip towards the centre
+left is U8, the 32KB RAM. We're using an Alliance chip for this project. The
+rest are smaller, logic devices.
+
+The legs of the chips rarely line up perfectly with the sockets first
+time. Press them gently against the table top to bend them into
+shape. Alternate sides so the legs remain a 90deg to the side of the IC.
+
+
+
+Tests
+=====
+
+Need write to RAM
+  How to inspect RAM?
+
+Need write to Flash
+  Ditto
+
+Flash banking
+  Ditton
+
+
+Get Z80 working?
+  How can I know it's working?
+
+
+Short 2 pins on Ardiuno connector
+  Read them?
+  Connect LED across them?

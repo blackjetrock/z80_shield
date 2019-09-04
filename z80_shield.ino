@@ -585,10 +585,12 @@ void half_t_state()
 
   if ( clk )
     {
+//      Serial.println("Running half a clock (CLK HIGH)...\n");
       digitalWrite(A_CLK_Pin, HIGH);
     }
   else
     {
+//      Serial.println("Running half a clock (CLK LOW)...\n");
       digitalWrite(A_CLK_Pin, LOW);
     }
   
@@ -1967,6 +1969,12 @@ struct
 
 void cmd_set_example_code(String cmd)
 {
+  if( cmd.length() == 1 )
+  {
+    Serial.println("Set example code using 'sN' where 'N' is from the example code list");
+    return;
+  }
+
   String arg = cmd.substring(1);
 
   int code_i = arg.toInt();
@@ -1978,6 +1986,8 @@ void cmd_set_example_code(String cmd)
   Serial.print("  len:");
   Serial.print(example_code_length);
   Serial.println("'");
+
+  Serial.println("Now use memory management menu to write the example code to Flash/RAM");
 }
 
 void cmd_show_example_code(String cmd)
@@ -2044,7 +2054,6 @@ void cmd_trace_test_code(String cmd)
       half_t_state();
       delay(5);
 
-      // Dump the status so we can see what's happening
       // Dump the status so we can see what's happening
       if ( !fast_mode )
 	{
@@ -2331,8 +2340,8 @@ void cmd_memory(String cmd)
       
       Serial.print(" Bus state:");
       Serial.println(bsm_state_name());
-      Serial.println(" (r:Display memory  a: Set address w:write byte e:Erase flash sector E:Erase chip)");
-      Serial.println(" (m:Mem space i:IO space b:Set bank X:write example code to 0000 Y:write code to all banks)");
+      Serial.println(" (r:Display memory  a:Set address  w:write byte  e:Erase flash sector         E:Erase chip)");
+      Serial.println(" (m:Mem space       i:IO space     b:Set bank    X:write example code to 0000 Y:write code to all banks)");
 
       Serial.println(" (return:next q:quit)");
       
@@ -2480,17 +2489,36 @@ void cmd_dummy(String cmd)
 String cmd;
 struct
 {
-  String cmdname;
+  String     cmdname;
+  String     desc;
   CMD_FPTR   handler;
 } cmdlist [] =
   {
-    {"g",         cmd_grab_z80},
-    {"t",         cmd_trace_test_code},
-    {"l",         cmd_show_example_code},
-    {"s",         cmd_set_example_code},
-    {"m",         cmd_memory},
-    {"---",       cmd_dummy},
+    {"g",    "Grab the Z80",       cmd_grab_z80},
+    {"t",    "Trace test code",    cmd_trace_test_code},
+    {"l",    "List example code",  cmd_show_example_code},
+    {"s",    "Set example code",   cmd_set_example_code},
+    {"m",    "Memory management",  cmd_memory},
+    {"---",  "",                   cmd_dummy},
   };
+
+void print_commands()
+{
+  int i = 0;
+
+  Serial.println( "\nCommand Menu" );
+  Serial.println( "============\n" );
+
+  while( cmdlist[i].desc != "" )
+  {
+    Serial.print  ( cmdlist[i].cmdname );
+    Serial.print  ( ": " );
+    Serial.println( cmdlist[i].desc );
+    i++;
+  }
+
+  Serial.println( "\n>" );
+}
 
 // Interaction with the Mega from the host PC is through a 'monitor' command line type interface.
 
@@ -2512,7 +2540,7 @@ void run_monitor()
 	case '\r':
 	case '\n':
 	  // We have a command, process it
-	  //Serial.println("'"+cmd+"'");  
+	  // Serial.println("'"+cmd+"'");  
 	  for(i=0;; i++)
 	    {
 	      if ( cmdlist[i].cmdname == "---" )
@@ -2526,7 +2554,7 @@ void run_monitor()
 	      if( test == cmdlist[i].cmdname )
 		{
 		  (*(cmdlist[i].handler))(cmd);
-		  Serial.println(monitor_cmds);
+		  print_commands();
 		  Serial.print("> ");
 		}
 	    }
@@ -2633,9 +2661,13 @@ void setup()
 
   // initialize serial communication at 9600 bits per second:
   Serial.begin(9600);
+
+  for(int i=0; i<24; i++ )
+    Serial.println("");
+    
   Serial.println("Z80 Shield Monitor");
   Serial.println("    (Set line ending to carriage return)");
-  Serial.println(monitor_cmds);
+  print_commands();
 
   example_code = example_code_ram;
   example_code_length = sizeof(example_code_ram);
