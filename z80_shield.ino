@@ -568,9 +568,12 @@ void reset_z80()
   // Drive reset
   assert_signal(SIG_RES);
 
-  // Drive some clocks
-  t_state();
-  t_state();
+  // The Z80 user manual says we need 3 full clock for the reset to complete
+  for( int i=0; i<30; i++ )
+  {
+    t_state();
+    t_state();
+  }
 
   // Release reset
   deassert_signal(SIG_RES);
@@ -2501,6 +2504,14 @@ void cmd_memory(String cmd)
 //
 ////////////////////////////////////////////////////////////////////////////////
 
+void cmd_reset_z80(String cmd)
+{
+  (void)cmd;
+
+  reset_z80();
+}
+
+
 // Null cmd function
 void cmd_dummy(String cmd)
 {
@@ -2520,6 +2531,7 @@ struct
     {"l",    "List example code",  cmd_show_example_code},
     {"s",    "Set example code",   cmd_set_example_code},
     {"m",    "Memory management",  cmd_memory},
+    {"r",    "Reset the Z80",      cmd_reset_z80},
     {"---",  "",                   cmd_dummy},
   };
 
@@ -2550,30 +2562,25 @@ void run_monitor()
   int i;
   String test;
 
-
-  
   if( Serial.available()>0 )
     {
+      // Build up a command string from the serial input. When we received end-of-line
+      // look up the received string in the commands table and run the handler function
+      // for that command
+      //
       c = Serial.read();
-      //Serial.println(c,HEX);
+
       switch(c)
 	{
 	case '\r':
 	case '\n':
-	  // We have a command, process it
-	  // Serial.println("'"+cmd+"'");  
-	  for(i=0;; i++)
+	  for(i=0; cmdlist[i].cmdname != "---"; i++)
 	    {
-	      if ( cmdlist[i].cmdname == "---" )
-		{
-		  //Serial.println("break");
-		  break;
-		}
-		
 	      test = cmd.substring(0, (cmdlist[i].cmdname).length());
-	      //	      Serial.println("'"+test+"'");
 	      if( test == cmdlist[i].cmdname )
 		{
+		  // Found, run the handler then represent the menu
+		  //
 		  (*(cmdlist[i].handler))(cmd);
 		  print_commands();
 		  Serial.print("> ");
@@ -2592,9 +2599,8 @@ void run_monitor()
 
 ////////////////////////////////////////////////////////////////////////////////
 //
-// Gets a numeric parameter form th eserial input
+// Gets a numeric parameter from the serial input
 //
-
 int get_parameter()
 {
   String s = "";
