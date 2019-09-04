@@ -1337,7 +1337,11 @@ void cmd_dump_signals()
   // Data bus
   data = data_state();
     
-  Serial.print("Addr:");  
+  if( signal_state("M1") == HIGH )
+    Serial.print("Addr:");  
+  else
+    Serial.print("PC:");  
+
   Serial.print(to_hex(address, 4));
   Serial.print("  Data:");
   Serial.print(to_hex(data, 2));
@@ -2186,7 +2190,7 @@ void cmd_trace_test_code(String cmd)
 	  
 	  Serial.print(" Bus state:");
 	  Serial.println(bsm_state_name());
-	  Serial.println(" (G:Grab Bus  R: release bus M:Mega control  F:Free run t:Drive n tstates) b:Breakpoint B:Toggle breakpoint)");
+	  Serial.println(" (G:Grab Bus       R:Release bus    M:Mega control    F:Free run t:Drive n tstates b:Breakpoint B:Toggle breakpoint)");
 	  Serial.println(" (I:Request IO Map i:Release IO map J:Request MEM Map j:Release MEM map)");
 	  Serial.println(" (return:next q:quit 1:assert reset 0:deassert reset d:dump regs f:Run forever)");
 	  
