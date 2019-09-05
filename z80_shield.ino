@@ -179,6 +179,8 @@ const int IO_ADDR_BANK  = 0xC0;
 struct
 {
   String signame;
+  String description;
+  String assertion_note;
   const int pin;
   int   current_state;
   struct
@@ -194,25 +196,40 @@ struct
 // bus state machine will be laid out.
 //
   signal_list[] =
-
-    {
-      {  "BUSREQ", BUSREQ_Pin, 0, {{MODE_SLAVE, OUTPUT, HIGH},{MODE_MEGA_MASTER, OUTPUT, LOW }}, EV_A_BUSREQ, EV_D_BUSREQ},
-      {  "BUSACK", BUSACK_Pin, 0, {{MODE_SLAVE, INPUT,  HIGH},{MODE_MEGA_MASTER, INPUT,  HIGH}},  EV_A_BUSACK, EV_D_BUSACK},
-      {  "  MREQ", MREQ_Pin,   0, {{MODE_SLAVE, INPUT,  HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}},  EV_A_MREQ, EV_D_MREQ},
-      {  " IOREQ", IOREQ_Pin,  0, {{MODE_SLAVE, INPUT,  HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}},  EV_A_IOREQ, EV_D_IOREQ},
-      {  "    WR", WR_Pin,     0, {{MODE_SLAVE, INPUT,  HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}},  EV_A_WR, EV_D_WR},
-      {  "    RD", RD_Pin,     0, {{MODE_SLAVE, INPUT,  HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}},  EV_A_RD, EV_D_RD},
-      {  "    M1", M1_Pin,     0, {{MODE_SLAVE, INPUT,  HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}},  EV_A_M1, EV_D_M1},
-      {  "  RFSH", RFSH_Pin,   0, {{MODE_SLAVE, INPUT,  HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}},  EV_A_RFSH, EV_D_RFSH},
-      {  "   NMI", NMI_Pin,    0, {{MODE_SLAVE, OUTPUT, HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}}, EV_A_NMI, EV_D_NMI},
-      {  "   INT", INT_Pin,    0, {{MODE_SLAVE, OUTPUT, HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}}, EV_A_INT, EV_D_INT},
-      {  "  WAIT", WAIT_Pin,   0, {{MODE_SLAVE, OUTPUT, HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}}, EV_A_WAIT, EV_D_WAIT},
-      {  "   CLK", A_CLK_Pin,  0, {{MODE_SLAVE, OUTPUT, HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}}, EV_A_CLK, EV_D_CLK},
-      {  "   RES", A_RES_Pin,  0, {{MODE_SLAVE, OUTPUT, HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}}, EV_A_RES, EV_D_RES},
-      {  "MAPRQM", MAPRQM_Pin, 0, {{MODE_SLAVE, OUTPUT, HIGH},{MODE_MEGA_MASTER, OUTPUT, LOW }}, EV_A_MAPRQM, EV_D_MAPRQM},
-      {  "MAPRQI", MAPRQI_Pin, 0, {{MODE_SLAVE, OUTPUT, LOW },{MODE_MEGA_MASTER, OUTPUT, LOW }},  EV_A_MAPRQI, EV_D_MAPRQI},
-      {  "---",    0,          0, {{MODE_SLAVE, INPUT,  HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}},  0, 0},
-    };
+  {
+    {  "BUSREQ", "Mega --> Z80",    "     - Asserted, means Mega is controlling the Z80's buses",
+       BUSREQ_Pin, 0, {{MODE_SLAVE, OUTPUT, HIGH},{MODE_MEGA_MASTER, OUTPUT, LOW }}, EV_A_BUSREQ, EV_D_BUSREQ},
+    {  "BUSACK", "Z80  --> Mega",   "    - Asserted, means Z80 acknowledges it's not in control of its buses",
+       BUSACK_Pin, 0, {{MODE_SLAVE, INPUT,  HIGH},{MODE_MEGA_MASTER, INPUT,  HIGH}},  EV_A_BUSACK, EV_D_BUSACK},
+    {  "  MREQ", "Z80  --> Mega",   "    - Asserted, means address bus holds a memory address for a read or write",
+       MREQ_Pin,   0, {{MODE_SLAVE, INPUT,  HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}},  EV_A_MREQ, EV_D_MREQ},
+    {  " IOREQ", "Z80  --> Mega",   "    - Asserted, means lower half of address bus holds an IO address for a read or write",
+       IOREQ_Pin,  0, {{MODE_SLAVE, INPUT,  HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}},  EV_A_IOREQ, EV_D_IOREQ},
+    {  "    WR", "Z80  --> Mega",   "    - Asserted, means the data bus holds a value to be written",
+       WR_Pin,     0, {{MODE_SLAVE, INPUT,  HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}},  EV_A_WR, EV_D_WR},
+    {  "    RD", "Z80  --> Mega",   "    - Asserted, means the Z80 wants to read data from external device",
+       RD_Pin,     0, {{MODE_SLAVE, INPUT,  HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}},  EV_A_RD, EV_D_RD},
+    {  "    M1", "Z80  --> Mega",   "    - Asserted, means Z80 is doing an opcode fetch cycle",
+       M1_Pin,     0, {{MODE_SLAVE, INPUT,  HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}},  EV_A_M1, EV_D_M1},
+    {  "  RFSH", "Z80  --> Mega",   "    - Asserted, means Z80 is in refresh state",
+       RFSH_Pin,   0, {{MODE_SLAVE, INPUT,  HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}},  EV_A_RFSH, EV_D_RFSH},
+    {  "   NMI", "Mega --> Z80",    "     - Asserted, means a non maskable interrupt is being sent to the Z80",
+       NMI_Pin,    0, {{MODE_SLAVE, OUTPUT, HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}}, EV_A_NMI, EV_D_NMI},
+    {  "   INT", "Mega --> Z80",    "     - Asserted, means a maskable interrupt is being sent to the Z80",
+       INT_Pin,    0, {{MODE_SLAVE, OUTPUT, HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}}, EV_A_INT, EV_D_INT},
+    {  "  WAIT", "Mega --> Z80",    "",
+       WAIT_Pin,   0, {{MODE_SLAVE, OUTPUT, HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}}, EV_A_WAIT, EV_D_WAIT},
+    {  "   CLK", "Mega --> Z80",    "     - Asserted, means Z80 is in the second half of a T-state",
+       A_CLK_Pin,  0, {{MODE_SLAVE, OUTPUT, HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}}, EV_A_CLK, EV_D_CLK},
+    {  "   RES", "Mega --> Z80",    "     - Asserted, means the Z80 is being held in reset state",
+       A_RES_Pin,  0, {{MODE_SLAVE, OUTPUT, HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}}, EV_A_RES, EV_D_RES},
+    {  "MAPRQM", "Mega --> Shield", "  - Mega is providing memory (Flash and RAM) contents (not real hardware)",
+       MAPRQM_Pin, 0, {{MODE_SLAVE, OUTPUT, HIGH},{MODE_MEGA_MASTER, OUTPUT, LOW }}, EV_A_MAPRQM, EV_D_MAPRQM},
+    {  "MAPRQI", "Mega --> Shield", "  - Mega is providing IO (GPIO, CTC) contents (not real hardware)",
+       MAPRQI_Pin, 0, {{MODE_SLAVE, OUTPUT, LOW },{MODE_MEGA_MASTER, OUTPUT, LOW }},  EV_A_MAPRQI, EV_D_MAPRQI},
+    {  "---",    "",                "",
+       0,          0, {{MODE_SLAVE, INPUT,  HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}},  0, 0},
+  };
 
 // Indices for signals
 enum
@@ -1055,13 +1072,8 @@ void dump_misc_signals()
       for(int l=0;l<numlines;l++)
 	{
 	  
-	  for(int i=0;;i++)
+	  for(int i=0; signal_list[i].signame != "---" ;i++)
 	    {
-	      if ( signal_list[i].signame == "---" )
-		{
-		  // Done
-		  break;
-		}
 	      Serial.print(" ");	  
 	      Serial.print( signal_list[i].signame.charAt(l) );
 	    }
@@ -1097,13 +1109,8 @@ void dump_misc_signals()
     }
   else
     {
-      for(int i=0;;i++)
+      for(int i=0; signal_list[i].signame != "---"; i++)
 	{
-	  if ( signal_list[i].signame == "---" )
-	    {
-	      // Done
-	      break;
-	    }
 	  Serial.print( signal_list[i].signame+": " );
 
 	  int val = digitalRead(signal_list[i].pin );
@@ -1116,6 +1123,13 @@ void dump_misc_signals()
 	      Serial.print("0");
 	      break;
 	    }
+	  Serial.print("      (");
+	  Serial.print(signal_list[i].description+")");
+
+	  if( val == LOW )
+	  {
+	    Serial.print(signal_list[i].assertion_note);
+	  }
 	  Serial.println("");
 	}
     }
@@ -1332,7 +1346,7 @@ void cmd_dump_signals()
   Serial.print(to_hex(address, 4));
   Serial.print("  Data:");
   Serial.print(to_hex(data, 2));
-  Serial.println("");
+  Serial.println("\n");
   
   // Control signals on bus
   dump_misc_signals();
@@ -2061,7 +2075,11 @@ void cmd_trace_test_code(String cmd)
       // Dump the status so we can see what's happening
       if ( !fast_mode )
 	{
+	  Serial.print("\nBus state:");
+	  Serial.println(bsm_state_name());
+
 	  cmd_dump_signals();
+	  Serial.println("");
 	}
       else
 	{
@@ -2168,18 +2186,12 @@ void cmd_trace_test_code(String cmd)
 	{
 	  // Allow interaction
 	  Serial.println("");
-	  Serial.print("Breakpoint:");
 	  if ( trigger_on )
 	    {
+	      Serial.print("Breakpoint:");
 	      Serial.print(trigger_address & 0xffff, HEX);
 	    }
-	  else
-	    {
-	      Serial.print("OFF ");
-	    }
 	  
-	  Serial.print(" Bus state:");
-	  Serial.println(bsm_state_name());
 	  Serial.println(" (G:Grab Bus       R:Release bus    M:Mega control    F:Free run t:Drive n tstates b:Breakpoint B:Toggle breakpoint)");
 	  Serial.println(" (I:Request IO Map i:Release IO map J:Request MEM Map j:Release MEM map)");
 	  Serial.println(" (return:next q:quit 1:assert reset 0:deassert reset d:dump regs f:Run forever)");
