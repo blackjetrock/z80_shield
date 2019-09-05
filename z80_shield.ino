@@ -1163,14 +1163,8 @@ void set_signals_to_mode(int mode)
 
 void initialise_signals()
 {
-  for(int i=0;;i++)
+  for(int i=0; signal_list[i].signame != "---"; i++)
     {
-      if ( signal_list[i].signame == "---" )
-	{
-	  // Done
-	  break;
-	}
-
       signal_list[i].current_state  = digitalRead(signal_list[i].pin);
     }
 }
@@ -1184,14 +1178,8 @@ void initialise_signals()
 
 void signal_scan()
 {
-  for(int i=0;;i++)
+  for(int i=0; signal_list[i].signame != "---"; i++)
     {
-      if ( signal_list[i].signame == "---" )
-	{
-	  // Done
-	  break;
-	}
-
       // If read state is different to current state then generate events
       int state  = digitalRead(signal_list[i].pin);
       if ( state != signal_list[i].current_state )
@@ -1308,16 +1296,12 @@ void run_bsm(int stim)
 void cmd_grab_z80(String cmd)
 {
   (void)cmd;
-  String arg;
-  
-  Serial.println("Grabbing Z80");
 
-
-  //stored_bytes[indx] = arg.toInt();
   initialise_z80_for_control();
 
-  // Now take code from our code array and single step it
-  
+  Serial.println("\n-------------------------------------------------------------------");
+  Serial.println("The Arduino has grabbed the Z80, the Z80 is now the Arduino's slave");
+  Serial.println("-------------------------------------------------------------------");
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -2004,7 +1988,8 @@ void cmd_show_example_code(String cmd)
 {
   (void)cmd;
 
-  Serial.println("Example Code");
+  Serial.println("\nCode examples in this build:");
+  Serial.println("----------------------------");
   
   for(int i=0; code_list[i].code != 0; i++)
     {
@@ -2012,6 +1997,8 @@ void cmd_show_example_code(String cmd)
       Serial.print(": ");
       Serial.println(code_list[i].desc);
     }
+
+  Serial.println("\nUse 's' option of command menu to set one of these code examples");
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -2509,6 +2496,10 @@ void cmd_reset_z80(String cmd)
   (void)cmd;
 
   reset_z80();
+
+  Serial.println( "\n------------------" );
+  Serial.println( "Z80 has been reset" );
+  Serial.println( "------------------" );
 }
 
 
@@ -2549,8 +2540,6 @@ void print_commands()
     Serial.println( cmdlist[i].desc );
     i++;
   }
-
-  Serial.println( "\n>" );
 }
 
 // Interaction with the Mega from the host PC is through a 'monitor' command line type interface.
@@ -2583,7 +2572,8 @@ void run_monitor()
 		  //
 		  (*(cmdlist[i].handler))(cmd);
 		  print_commands();
-		  Serial.print("> ");
+
+		  Serial.print("\n");
 		}
 	    }
 
@@ -2681,11 +2671,6 @@ void setup()
   digitalWrite(SW0_Pin, HIGH);
   digitalWrite(SW1_Pin, LOW);
 
-  initialise_z80_for_control();
-
-  // Initialise signals
-  initialise_signals();
-
   // initialize serial communication at 9600 bits per second:
   Serial.begin(9600);
 
@@ -2694,7 +2679,15 @@ void setup()
     
   Serial.println("Z80 Shield Monitor");
   Serial.println("    (Set line ending to carriage return)");
+
+  // Use the command menu function because it outputs status to the user
+  //
+  cmd_grab_z80("initialisation");
+
   print_commands();
+
+  // Initialise signals
+  initialise_signals();
 
   example_code = example_code_ram;
   example_code_length = sizeof(example_code_ram);
