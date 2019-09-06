@@ -29,6 +29,10 @@ if { 0 } {
     }
 }
 
+# Flush
+while { [string length [read $f]] > 0 } {
+}
+
 
 # Signal that we have started
 puts "Starting"
