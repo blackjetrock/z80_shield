@@ -2268,10 +2268,74 @@ void cmd_trace_test_code(String cmd)
 
 ////////////////////////////////////////////////////////////////////////////////
 //
-// Flash menu
+// Upload a binary file and write to bank given
+// Flow control:
+// After each line the transmitter should wait for a '+' character
 //
-////////////////////////////////////////////////////////////////////////////////
 
+
+
+void upload_to_bank(int bank)
+{
+  char c = 0;
+  boolean done = false;
+  char ascii_data[255];
+  int idx = 0;
+  int length = 0;
+  int j;
+  char ascii_byte[3];
+  int bin_data[255/2];
+  int byte;
+  int bank_addr = 0;
+  
+  while( !done )
+    {
+      while ( Serial.available() == 0)
+	{
+	}
+      c = Serial.read();
+
+      switch(c)
+	{
+	case '\r':
+	case '\n':
+	  // End of line, write to flash
+	  ascii_byte[0] = ascii_data[1];
+	  ascii_byte[1] = ascii_data[2];
+	  ascii_byte[2] = '\0';
+
+	  sscanf(ascii_byte, "%x", &length);
+
+	  if ( length == 0 )
+	    {
+	      done = true;
+	    }
+	  else
+	    {
+	      for(j=5; j<idx+5; j+=2)
+		{
+		  ascii_byte[0] = ascii_data[j];
+		  ascii_byte[1] = ascii_data[j+1];
+		  ascii_byte[2] = '\0';
+		  
+		  sscanf(ascii_byte, "%x", &byte);
+		}
+	      
+	      // Write data to flash
+	      flash_write_byte(bank, bank_addr++, byte);
+	    }
+
+	  // Send signal next line is needed
+	  Serial.print("+");
+	  idx = 0;
+	  break;
+
+	default:
+	  ascii_data[idx++] = c;
+	  break;
+	}
+    }
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 //
@@ -2333,7 +2397,8 @@ void cmd_memory(String cmd)
       Serial.println(bsm_state_name());
       Serial.println(" (r:Display memory  a: Set address w:write byte e:Erase flash sector E:Erase chip)");
       Serial.println(" (m:Mem space i:IO space b:Set bank X:write example code to 0000 Y:write code to all banks)");
-
+      Serial.println(" (u:upload bin to flash bank 0)");
+      
       Serial.println(" (return:next q:quit)");
       
       while ( Serial.available() == 0)
@@ -2349,6 +2414,13 @@ void cmd_memory(String cmd)
 	    {
 	      switch( Serial.read())
 		{
+		case 'u':
+		  // Upload binary file to flash bank 0
+		  Serial.println("Start upload of binary file. Will write to bank 0");
+		  
+		  upload_to_bank(0);
+		  break;
+		  
 		case 'r':
 		  // display memory at address
 		  char ads[10];
