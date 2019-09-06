@@ -2298,7 +2298,7 @@ void cmd_trace_test_code(String cmd)
 
 ////////////////////////////////////////////////////////////////////////////////
 //
-// Upload a binary file and write to bank given
+// Upload an intex hex file and write to bank given
 // Flow control:
 // After each line the transmitter should wait for a '+' character
 //
@@ -2312,11 +2312,45 @@ void upload_to_bank(int bank)
   char ascii_data[255];
   int idx = 0;
   int length = 0;
+  int address = 0;
   int j;
   char ascii_byte[3];
+  char ascii_address[5];
+  
   int bin_data[255/2];
   int byte;
   int bank_addr = 0;
+
+  // We have to wait here for a signal that the upload program has started
+  boolean started = false;
+  boolean exit_upload = false;
+  
+  while( !started )
+    {
+      while ( Serial.available() == 0)
+	{
+	}
+      c = Serial.read();
+      
+      switch(c)
+	{
+	case 'S':
+	  started = true;
+	  Serial.println("Started");
+	  break;
+	  
+	case ' ':
+	  exit_upload = true;
+	  break;
+	}
+
+    }
+  
+  if ( exit_upload )
+    {
+      // Aborted
+      return;
+    }
   
   while( !done )
     {
@@ -2329,30 +2363,43 @@ void upload_to_bank(int bank)
 	{
 	case '\r':
 	case '\n':
+	  break;
+	  
+	case '-':
 	  // End of line, write to flash
 	  ascii_byte[0] = ascii_data[1];
 	  ascii_byte[1] = ascii_data[2];
 	  ascii_byte[2] = '\0';
-
+	  ascii_address[0] = ascii_data[3];
+	  ascii_address[1] = ascii_data[4];
+	  ascii_address[2] = ascii_data[5];
+	  ascii_address[3] = ascii_data[6];
+	  ascii_address[4] = '\0';
+	  
 	  sscanf(ascii_byte, "%x", &length);
+	  sscanf(ascii_address, "%x", &address);
 
+	  Serial.print("Address:");
+	  Serial.println(ascii_address);
+	  Serial.print("Length:");
+	  Serial.println(length);
+	  
 	  if ( length == 0 )
 	    {
 	      done = true;
 	    }
 	  else
 	    {
-	      for(j=5; j<idx+5; j+=2)
+	      for(j=7; j<idx+7; j+=2)
 		{
 		  ascii_byte[0] = ascii_data[j];
 		  ascii_byte[1] = ascii_data[j+1];
 		  ascii_byte[2] = '\0';
-		  
+
 		  sscanf(ascii_byte, "%x", &byte);
+		  // Write data to flash
+		  flash_write_byte(bank, bank_addr++, byte);
 		}
-	      
-	      // Write data to flash
-	      flash_write_byte(bank, bank_addr++, byte);
 	    }
 
 	  // Send signal next line is needed
