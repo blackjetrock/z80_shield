@@ -1,0 +1,1 @@
+zcc +embedded -compiler sccz80 --no-crt -no-cleanup --list test.c -o test.bin --create-app -Cz"--rombase=0x0000 --romsize=0x2000 --ihex"
