@@ -2185,16 +2185,23 @@ void cmd_trace_test_code(String cmd)
       else
 	{
 	  // Allow interaction
-	  Serial.println("");
+	  Serial.println( "\nTrace Menu" );
+          Serial.println( "==========" );
+
 	  if ( trigger_on )
 	    {
 	      Serial.print("Breakpoint:");
 	      Serial.print(trigger_address & 0xffff, HEX);
 	    }
 	  
-	  Serial.println(" (G:Grab Bus       R:Release bus    M:Mega control    F:Free run t:Drive n tstates b:Breakpoint B:Toggle breakpoint)");
-	  Serial.println(" (I:Request IO Map i:Release IO map J:Request MEM Map j:Release MEM map)");
-	  Serial.println(" (return:next q:quit 1:assert reset 0:deassert reset d:dump regs f:Run forever)");
+	  Serial.println("t:Mega drive n tstates       f:Mega drive tstates forever");
+	  Serial.println("F:Free run (at ~4.5MHz)      M:Mega provide clock (at ~80Hz)\n");
+	  Serial.println("G:Mega take Z80 bus (BUSREQ) R:Mega release Z80 bus");
+	  Serial.println("I:Mega take IO map           i:Hardware take IO map");
+	  Serial.println("J:Mega take memory map       j:Hardware take memory map\n");
+	  Serial.println("1:assert reset               0:deassert reset             d:dump regs (coming soon!)");
+	  Serial.println("b:Breakpoint                 B:Toggle breakpoint\n");
+	  Serial.println("return: drive half a clock   q:quit menu");
 	  
 	  while ( Serial.available() == 0)
 	    {
@@ -2242,7 +2249,7 @@ void cmd_trace_test_code(String cmd)
 		      break;
 		      
 		    case 'F':
-		      // Free run
+		      // Free run (hardware control of reset and clock)
 		      digitalWrite(SW0_Pin, LOW);
 		      digitalWrite(SW1_Pin, LOW);
 		      break;
