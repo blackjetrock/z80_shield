@@ -2370,13 +2370,13 @@ void upload_to_bank(int bank)
 	  ascii_byte[0] = ascii_data[1];
 	  ascii_byte[1] = ascii_data[2];
 	  ascii_byte[2] = '\0';
+	  sscanf(ascii_byte, "%x", &length);
+	  
 	  ascii_address[0] = ascii_data[3];
 	  ascii_address[1] = ascii_data[4];
 	  ascii_address[2] = ascii_data[5];
 	  ascii_address[3] = ascii_data[6];
 	  ascii_address[4] = '\0';
-	  
-	  sscanf(ascii_byte, "%x", &length);
 	  sscanf(ascii_address, "%x", &address);
 
 	  Serial.print("Address:");
@@ -2390,7 +2390,7 @@ void upload_to_bank(int bank)
 	    }
 	  else
 	    {
-	      for(j=7; j<idx+7; j+=2)
+	      for(j=9; j<idx-3; j+=2)
 		{
 		  ascii_byte[0] = ascii_data[j];
 		  ascii_byte[1] = ascii_data[j+1];

@@ -14,9 +14,11 @@ set txt [read $f]
 close $f
 
 # Open the hex file and send it to the sketch
+puts "Opening $device"
 set f [open $device r+]
+#set f [open /dev/tty  r+]
 #fconfigure $f -mode 9600,n,8,1
-fconfigure $f -handshake none
+#fconfigure $f -handshake none
 fconfigure $f -blocking 0
 
 if { 0 } {
@@ -30,7 +32,15 @@ if { 0 } {
 }
 
 # Flush
-while { [string length [read $f]] > 0 } {
+puts "Flushing..."
+set done 0
+while { !$done } {
+    set tx [read $f]
+    if { [string length $tx] == 0 } {
+	set done 1
+    } else {
+	puts $tx
+    }
 }
 
 
@@ -38,7 +48,23 @@ while { [string length [read $f]] > 0 } {
 puts "Starting"
 
 puts $f "S"
-puts $f "S"
+flush $f
+
+after 2000
+
+# Flush
+puts "Flushing..."
+set done 0
+while { !$done } {
+    set tx  [read $f]
+    if { [string length $tx ] == 0 } {
+	set done 1
+    } else {
+	puts "Flushed '$tx '"
+    }
+    
+    
+}
 
 puts "Sending $filename"
 
@@ -47,6 +73,7 @@ foreach line [split $txt "\n"] {
     # We terminate line with a '-'
     puts "Sending line '$line'"
     puts $f "$line-"
+    flush $f
     
     # Wait for a '+' that signals the next line can be sent
     set rx_tick 0
@@ -57,14 +84,14 @@ foreach line [split $txt "\n"] {
 	set rdata [read $f]
 
 	if { [string length $rdata] > 0 } {
-	    puts "Got '$rdata'"
-	    switch $rdata {
-		"+" {
-		    # Tick received, move on
-		    set rx_tick 1
-		}
+	    if { [string first "+" $rdata] != -1 } {
+		puts "Got '$rdata'"
+		# Tick received, move on
+		set rx_tick 1
+		
 	    }
 	}
     }
 }
+
 
