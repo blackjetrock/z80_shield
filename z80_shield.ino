@@ -7,6 +7,8 @@ typedef unsigned char BYTE;
 typedef void (*FPTR)();
 typedef void (*CMD_FPTR)(String cmd);
 
+void cmd_reset_z80(String cmd);
+
 void run_bsm(int stim);
 String bsm_state_name();
 unsigned int addr_state();
@@ -586,9 +588,8 @@ void reset_z80()
   assert_signal(SIG_RES);
 
   // The Z80 user manual says we need 3 full clock for the reset to complete
-  for( int i=0; i<30; i++ )
+  for( int i=0; i<3; i++ )
   {
-    t_state();
     t_state();
   }
 
@@ -1989,13 +1990,13 @@ void cmd_set_example_code(String cmd)
   example_code        = code_list[code_i].code;
   example_code_length = code_list[code_i].length;
   
-  Serial.print("Example code now '");
+  Serial.print("\nExample code now '");
   Serial.print(code_list[code_i].desc);
   Serial.print("  len:");
   Serial.print(example_code_length);
   Serial.println("'");
 
-  Serial.println("Now use memory management menu to write the example code to Flash/RAM");
+  Serial.println("\nCode example "+arg+" has been set in the Mega memory. Remember to write it to flash if you want to run from hardware");
 }
 
 void cmd_show_example_code(String cmd)
@@ -2056,9 +2057,6 @@ void cmd_trace_test_code(String cmd)
   // We have a logical address space for the array of code such that the code starts at
   // 0000H, which is the reset vector
 
-  // reset Z80
-  reset_z80();
-  
   // Enable IO and emulate memory
   // We will allow the RAM to provide RAM data
   
@@ -2185,20 +2183,21 @@ void cmd_trace_test_code(String cmd)
       else
 	{
 	  // Allow interaction
+	  if ( trigger_on )
+	    {
+	      Serial.print("\nBreakpoint active:");
+	      Serial.println(trigger_address & 0xffff, HEX);
+	    }
+	  
 	  Serial.println( "\nTrace Menu" );
           Serial.println( "==========" );
 
-	  if ( trigger_on )
-	    {
-	      Serial.print("Breakpoint:");
-	      Serial.print(trigger_address & 0xffff, HEX);
-	    }
-	  
 	  Serial.println("t:Mega drive n tstates       f:Mega drive tstates forever");
 	  Serial.println("F:Free run (at ~4.5MHz)      M:Mega provide clock (at ~80Hz)\n");
 	  Serial.println("G:Mega take Z80 bus (BUSREQ) R:Mega release Z80 bus");
 	  Serial.println("I:Mega take IO map           i:Hardware take IO map");
 	  Serial.println("J:Mega take memory map       j:Hardware take memory map\n");
+	  Serial.println("r:reset Z80");
 	  Serial.println("1:assert reset               0:deassert reset             d:dump regs (coming soon!)");
 	  Serial.println("b:Breakpoint                 B:Toggle breakpoint\n");
 	  Serial.println("return: drive half a clock   q:quit menu");
@@ -2249,9 +2248,24 @@ void cmd_trace_test_code(String cmd)
 		      break;
 		      
 		    case 'F':
-		      // Free run (hardware control of reset and clock)
+		      // Free run
+
+		      assert_signal(SIG_RES);
+
+		      // Mega relinquishes control of reset and clock, letting hw have it
+		      //
 		      digitalWrite(SW0_Pin, LOW);
 		      digitalWrite(SW1_Pin, LOW);
+
+		      // Mega relinquishes IO and memory map
+		      //
+		      digitalWrite(MAPRQI_Pin, LOW);
+		      digitalWrite(MAPRQM_Pin, LOW);
+
+		      // Reset the Z80
+		      //
+		      reset_z80();
+
 		      break;
 
 		    case 'I':
@@ -2276,9 +2290,12 @@ void cmd_trace_test_code(String cmd)
 		      
 		    case 'R':
 		      bus_release();
-
 		      break;
 		      
+		    case 'r':
+		      cmd_reset_z80("");
+		      break;
+
 		    case '1':
 		      assert_signal(SIG_RES);
 		      break;
@@ -2589,6 +2606,7 @@ void cmd_memory(String cmd)
 
 		case 'Y':
 		  //flush_serial();
+
 		  // Take the example code and write it to all banks of flash 
 		  for(int b=0; b<16;b++)
 		    {
@@ -2827,8 +2845,10 @@ void setup()
   // Initialise signals
   initialise_signals();
 
-  example_code = example_code_ram;
-  example_code_length = sizeof(example_code_ram);
+  // Set the Mega to supply the first example bit of code. Use the user function
+  // because it prints a message saying what it has done
+  //
+  cmd_set_example_code("s0");
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -2843,113 +2863,3 @@ void loop()
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
