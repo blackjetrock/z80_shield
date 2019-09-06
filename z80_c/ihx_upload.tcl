@@ -19,7 +19,7 @@ set f [open $device r+]
 fconfigure $f -handshake none
 fconfigure $f -blocking 0
 
-if { 1 } {
+if { 0 } {
     while { 1 } {
 	puts $f "S\n"
 	set d [read $f]
@@ -41,7 +41,7 @@ puts "Sending $filename"
 foreach line [split $txt "\n"] {
 
     # We terminate line with a '-'
-    puts "Sending line"
+    puts "Sending line '$line'"
     puts $f "$line-"
     
     # Wait for a '+' that signals the next line can be sent
