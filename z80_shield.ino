@@ -3,6 +3,12 @@
 // Serial monitor based control program
 //
 
+// If you enable this, the Mega will supply data from its own internal buffer when the Z80
+// reads bytes from the ROM (i.e. Flash). Turn it off for the flash to supply the bytes, in
+// which case you only need to remember to write your code/data to flash once. :)
+//
+#define ENABLE_MEGA_ROM_EMULATION 0
+
 typedef unsigned char BYTE;
 typedef void (*FPTR)();
 typedef void (*CMD_FPTR)(String cmd);
@@ -481,7 +487,7 @@ void entry_mem1()
       // We don't drive the bus
       data_bus_inputs();
       
-      // Turn memory map back on
+      // Turn memory map back on (i.e. hardware supplies RAM data)
       digitalWrite(MAPRQM_Pin, LOW);
 
       if ( !fast_mode )
@@ -499,7 +505,8 @@ void entry_mem1()
 // Memory read cycle
 void entry_mem_rd()
 {
-  // We get data from either the example code (flash) or our emulated RAM
+#if ENABLE_MEGA_ROM_EMULATION
+  // We get data from our emulated flash.
   if ( addr_state() < 0x8000 )
     {
       // Emulate flash
@@ -515,19 +522,13 @@ void entry_mem_rd()
 	  Serial.print(example_code[addr_state()], HEX);
 	}
     }
+#endif
 }
 
 void entry_mem_rd_end()
 {
-  // release the data bus, either if we have driven it or the RAm chip has, it makes no difference
+  // release the data bus, either if we have driven it or the RAM/flash chip has, it makes no difference
   data_bus_inputs();
-
-  // release the memory map
-  //  if (addr_state() >= 0x8000)
-  //{
-      // Turn memory off
-      digitalWrite(MAPRQM_Pin, HIGH);
-      // }
 }
 
 String bsm_state_name()
@@ -1996,7 +1997,13 @@ void cmd_set_example_code(String cmd)
   Serial.print(example_code_length);
   Serial.println("'");
 
-  Serial.println("\nCode example "+arg+" has been set in the Mega memory. Remember to write it to flash if you want to run from hardware");
+  Serial.print("\nCode example "+arg+" has been set in the Mega memory. ");
+#if ENABLE_MEGA_ROM_EMULATION
+  Serial.println("Mega is emulating ROM in this sketch build, and will supply this code to the Z80.");
+#else
+  Serial.println("This sketch build is not emulating ROM, so remember to write");
+  Serial.println("it to flash so the hardware runs it.");
+#endif
 }
 
 void cmd_show_example_code(String cmd)
@@ -2057,10 +2064,18 @@ void cmd_trace_test_code(String cmd)
   // We have a logical address space for the array of code such that the code starts at
   // 0000H, which is the reset vector
 
-  // Enable IO and emulate memory
+  // Enable IO and memory
   // We will allow the RAM to provide RAM data
-  
+  //
+#if ENABLE_MEGA_ROM_EMULATION
+  // ROM data comes from the Mega
+  //
   deassert_signal(SIG_MAPRQM); 
+#else
+  // ROM data comes from the flash
+  //
+  assert_signal(SIG_MAPRQM); 
+#endif
   assert_signal(SIG_MAPRQI);
 
   // Clock and monitor the bus signals to work out what to do
@@ -2845,10 +2860,21 @@ void setup()
   // Initialise signals
   initialise_signals();
 
+#if ENABLE_MEGA_ROM_EMULATION
   // Set the Mega to supply the first example bit of code. Use the user function
   // because it prints a message saying what it has done
   //
   cmd_set_example_code("s0");
+
+  digitalWrite(MAPRQI_Pin, HIGH);
+  digitalWrite(MAPRQM_Pin, HIGH);
+#else
+  Serial.println("\nThis sketch build is not emulating ROM, so we're going to");
+  Serial.println("run whatever is in the flash chip");
+
+  digitalWrite(MAPRQI_Pin, LOW);
+  digitalWrite(MAPRQM_Pin, LOW);
+#endif
 }
 
 ////////////////////////////////////////////////////////////////////////////////
