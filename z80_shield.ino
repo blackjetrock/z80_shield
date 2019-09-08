@@ -1434,36 +1434,6 @@ BYTE example_code_lcd_bl_flash[] =
                                   0xc9,  //   004a : 				RET
   };
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 BYTE example_code_lcd_slow_flash[] =
   {
                                          //   0000 : IO_ADDR_PIO0:   EQU   80H   
@@ -1878,83 +1848,18 @@ BYTE example_code_lcd_test[] =
                                   0xc9,  //   02a0 : 				RET 
   };
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+BYTE example_code_df_test[] =
+  {
+                                  0xF3,  //   0000 :           	di
+                                         //   0001 : do_it_again: 
+                    0x01,  0xFF,  0xFF,  //   0001 :     	ld	bc, $ffff
+                                         //   0004 : pointless_count: 
+                    0x21,  0x00,  0x80,  //   0004 :     	ld	hl, $8000
+                                  0x7E,  //   0007 :           	ld	a, (hl)
+                                  0x0B,  //   0008 :           	dec	bc
+                           0x10,  0xF9,  //   0009 :        	djnz	pointless_count
+                           0x18,  0xF4,  //   000B :        	jr	do_it_again
+  };
 
 //--------------------------------------------------------------------------------
 
@@ -1973,6 +1878,7 @@ struct
       {"Flash turn LCD shield backlight", example_code_lcd_bl_flash, sizeof(example_code_lcd_bl_flash)},
       {"Slow Flash turn LCD shield backlight", example_code_lcd_slow_flash, sizeof(example_code_lcd_slow_flash)},
       {"LCD test",                             example_code_lcd_test, sizeof(example_code_lcd_test)},
+      {"DF playing around test",          example_code_df_test,      sizeof(example_code_df_test)},
       {"-",                               0,                         0},
     };
 
@@ -2889,3 +2795,52 @@ void loop()
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
