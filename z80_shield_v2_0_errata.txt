@@ -1,0 +1,19 @@
+Errors on V2.0 PCB
+
+1. SW0 and SW1 should go to MEGA so we can write to PIO
+2. NMI should go to external connector
+3. SPI connector needed in Arduino footprint plus SPi signals from PIO
+4. XTAL space needed
+5. Move resistors away from USB socket and keep area clear
+
+6. Check INT signal OK
+
+7. CONN4 and CONN5 labels reversed on PCB
+8. MISO twice on shield connections
+9. RESET not connected on shield
+10. AREF not connected on shield
+11. Add free running LED
+12. Remove MAP LEDs
+
+
+

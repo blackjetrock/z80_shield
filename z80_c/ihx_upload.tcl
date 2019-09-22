@@ -69,7 +69,10 @@ while { !$done } {
 puts "Sending $filename"
 
 foreach line [split $txt "\n"] {
-
+    if { [string length $line] == 0 } {
+	break
+    }
+    
     # We terminate line with a '-'
     puts "Sending line '$line'"
     puts $f "$line-"
