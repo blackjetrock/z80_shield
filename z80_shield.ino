@@ -1375,9 +1375,6 @@ void cmd_dump_signals()
 
   Serial.print(to_hex(address, 4));
 
-  if( signal_state("M1") == LOW )
-    z80_registers.PC = (uint16_t)address;  
-
   Serial.print("  Data:");
   Serial.print(to_hex(data, 2));
   Serial.println("\n");
@@ -2024,6 +2021,7 @@ void cmd_trace_test_code(String cmd)
 #endif
   
   int fast_mode_n = 0;
+  int fast_to_next_instruction = -1;
   unsigned int trigger_address = 0x8000;    // trigger when we hit RAm by default
   boolean trigger_on = false;
   
@@ -2050,6 +2048,9 @@ void cmd_trace_test_code(String cmd)
       // Half t states so we can examine all clock transitions
       half_t_state();
       delay(5);
+
+      if( signal_state("M1") == LOW )
+        z80_registers.PC = (uint16_t)addr_state();  
 
       // Dump the status so we can see what's happening
       if ( !fast_mode )
@@ -2144,6 +2145,15 @@ void cmd_trace_test_code(String cmd)
 	      quiet = false;
 	    }
 
+	  if ( fast_mode_n == -1 )
+            {
+              if( z80_registers.PC != fast_to_next_instruction )
+                {
+                  fast_mode = false;
+                  quiet = false;
+                }
+	    }
+
 	  if ( Serial.available()>0 )
 	    {
 	      // Turn fast mode off if there's a keypress
@@ -2174,7 +2184,8 @@ void cmd_trace_test_code(String cmd)
           Serial.println( "==========" );
 
 	  Serial.println("t:Mega drive n tstates       f:Mega drive tstates forever");
-	  Serial.println("F:Free run (at ~4.5MHz)      M:Mega provide clock (at ~80Hz)\n");
+	  Serial.println("n:Mega drive tstates until next Z80 instruction\n");
+	  Serial.println("F:Free run (at ~4.5MHz)      M:Mega provide clock (at ~80Hz)");
 	  Serial.println("G:Mega take Z80 bus (BUSREQ) R:Mega release Z80 bus");
 	  Serial.println("I:Mega take IO map           i:Hardware take IO map");
 	  Serial.println("J:Mega take memory map       j:Hardware take memory map\n");
@@ -2198,10 +2209,19 @@ void cmd_trace_test_code(String cmd)
 		    {
 		    case 't':
 		      fast_mode = true;
-		      fast_mode_n = 100;
 		      quiet = true;
 		      delay(100);
 		      fast_mode_n = get_parameter();
+		      cmdloop = false;
+		      break;
+
+		    case 'n':
+		      fast_mode = true;
+		      quiet = true;
+		      delay(100);
+		      fast_mode_n = -1;
+		      fast_to_next_instruction = z80_registers.PC;
+                      get_parameter();  // Wipe anything in serial input
 		      cmdloop = false;
 		      break;
 
@@ -2855,52 +2875,3 @@ void loop()
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
