@@ -2022,6 +2022,7 @@ void cmd_trace_test_code(String cmd)
   
   int fast_mode_n = 0;
   int fast_to_next_instruction = -1;
+  int fast_to_address = -1;
   unsigned int trigger_address = 0x8000;    // trigger when we hit RAm by default
   boolean trigger_on = false;
   
@@ -2147,7 +2148,16 @@ void cmd_trace_test_code(String cmd)
 
 	  if ( fast_mode_n == -1 )
             {
-              if( z80_registers.PC != fast_to_next_instruction )
+              if( fast_to_address != -1 )
+                {
+                  if( z80_registers.PC == fast_to_address )
+                    {
+                      fast_mode = false;
+                      quiet = false;
+                      fast_to_address = -1;
+                    }
+                }
+              else if( z80_registers.PC != fast_to_next_instruction )
                 {
                   fast_mode = false;
                   quiet = false;
@@ -2184,6 +2194,7 @@ void cmd_trace_test_code(String cmd)
           Serial.println( "==========" );
 
 	  Serial.println("t:Mega drive n tstates       f:Mega drive tstates forever");
+	  Serial.println("c:Mega drive tstates, continues to given Z80 instruction address");
 	  Serial.println("n:Mega drive tstates until next Z80 instruction\n");
 	  Serial.println("F:Free run (at ~4.5MHz)      M:Mega provide clock (at ~80Hz)");
 	  Serial.println("G:Mega take Z80 bus (BUSREQ) R:Mega release Z80 bus");
@@ -2222,6 +2233,15 @@ void cmd_trace_test_code(String cmd)
 		      fast_mode_n = -1;
 		      fast_to_next_instruction = z80_registers.PC;
                       get_parameter();  // Wipe anything in serial input
+		      cmdloop = false;
+		      break;
+
+		    case 'c':
+		      fast_mode = true;
+		      quiet = true;
+		      delay(100);
+		      fast_mode_n = -1;
+		      fast_to_address = get_hex_parameter();
 		      cmdloop = false;
 		      break;
 
