@@ -2113,16 +2113,19 @@ void cmd_trace_test_code(String cmd)
 
 	  if ( fast_mode_n == -1 )
             {
+              // Casts are to keep the compiler quiet. For the moment the fast_to_address
+              // is signed so it can use -1 as a sentinel value
+              //
               if( fast_to_address != -1 )
                 {
-                  if( z80_registers.PC == fast_to_address )
+                  if( (int16_t)z80_registers.PC == fast_to_address )
                     {
                       fast_mode = false;
                       quiet = false;
                       fast_to_address = -1;
                     }
                 }
-              else if( z80_registers.PC != fast_to_next_instruction )
+              else if( (int16_t)z80_registers.PC != fast_to_next_instruction )
                 {
                   fast_mode = false;
                   quiet = false;
@@ -2327,7 +2330,6 @@ void upload_to_bank(int bank)
   char ascii_byte[3];
   char ascii_address[5];
   
-  int bin_data[255/2];
   int byte;
   int bank_addr = 0;
 
