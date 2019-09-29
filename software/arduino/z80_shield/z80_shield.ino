@@ -2013,7 +2013,7 @@ void cmd_trace_test_code(String cmd)
     {
       // Half t states so we can examine all clock transitions
       half_t_state();
-      delay(5);
+      //delay(5);
 
       if( signal_state("M1") == LOW )
         z80_registers.PC = (uint16_t)addr_state();  
@@ -2316,7 +2316,54 @@ void cmd_trace_test_code(String cmd)
 // After each line the transmitter should wait for a '+' character
 //
 
+boolean handle_upload_record( int bank, int *bank_addr, int index, char record[] )
+{
+  char ascii_byte[3];
+  char ascii_address[5];
+  int length = 0;
+  int address = 0;
+  int byte;
 
+  ascii_byte[0] = record[1];
+  ascii_byte[1] = record[2];
+  ascii_byte[2] = '\0';
+  sscanf(ascii_byte, "%x", &length);
+	  
+  ascii_address[0] = record[3];
+  ascii_address[1] = record[4];
+  ascii_address[2] = record[5];
+  ascii_address[3] = record[6];
+  ascii_address[4] = '\0';
+  sscanf(ascii_address, "%x", &address);
+
+  Serial.print("\n");
+  Serial.print("Address:");
+  Serial.println(ascii_address);
+  Serial.print("Length:");
+  Serial.println(length);
+	  
+  if ( length == 0 )
+  {
+    return 1;
+  }
+  else
+  {
+    int j;
+    for(j=9; j<index-3; j+=2)
+    {
+      ascii_byte[0] = record[j];
+      ascii_byte[1] = record[j+1];
+      ascii_byte[2] = '\0';
+
+      sscanf(ascii_byte, "%x", &byte);
+
+      // Write data to flash
+      flash_write_byte(bank, (*bank_addr)++, byte);
+    }
+  }
+
+  return 0;
+}
 
 void upload_to_bank(int bank)
 {
@@ -2426,6 +2473,42 @@ void upload_to_bank(int bank)
     }
 }
 
+
+void upload_to_bank_xonxoff(int bank)
+{
+  char c = 0;
+  int idx = 0;
+  boolean done = false;
+  char ascii_data[255];  
+  int bank_addr = 0;
+
+  while( !done )
+  {
+    while ( Serial.available() == 0);
+    c = Serial.read();
+
+    switch(c)
+    {
+    case '\r':
+    case '\n':
+      Serial.write(0x13);
+      Serial.flush();
+
+      done = handle_upload_record( bank, &bank_addr, idx, ascii_data );
+
+      Serial.write(0x11);
+      Serial.flush();
+
+      idx = 0;
+      break;
+
+    default:
+      ascii_data[idx++] = c;
+      break;
+    }
+  }
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 //
 // Memory monitor
@@ -2509,6 +2592,13 @@ void cmd_memory(String cmd)
 		  Serial.println("Start upload of binary file. Will write to bank 0");
 		  
 		  upload_to_bank(0);
+		  break;
+
+		case 'U':
+		  // Upload binary file to flash bank 0
+		  Serial.println("Start upload of binary file with XON/XOFF. Will write to bank 0");
+		  
+		  upload_to_bank_xonxoff(0);
 		  break;
 		  
 		case 'r':
@@ -2816,7 +2906,7 @@ void setup()
   digitalWrite(SW1_Pin, LOW);
 
   // initialize serial communication at 9600 bits per second:
-  Serial.begin(9600);
+  Serial.begin(115200);
 
   for(int i=0; i<24; i++ )
     Serial.println("");
