@@ -620,12 +620,12 @@ void half_t_state()
 
   if ( clk )
     {
-//      Serial.println("Running half a clock (CLK HIGH)...\n");
+      //      Serial.println("Running half a clock (CLK HIGH)...\n");
       digitalWrite(A_CLK_Pin, HIGH);
     }
   else
     {
-//      Serial.println("Running half a clock (CLK LOW)...\n");
+      //      Serial.println("Running half a clock (CLK LOW)...\n");
       digitalWrite(A_CLK_Pin, LOW);
     }
   
@@ -2173,136 +2173,145 @@ void cmd_trace_test_code(String cmd)
 	  Serial.println("b:Breakpoint                 B:Toggle breakpoint\n");
 	  Serial.println("return: drive half a clock   q:quit menu");
 	  
-	  while ( Serial.available() == 0)
-	    {
-	    }
-	  Serial.println(Serial.available());
-
 	  boolean cmdloop = true;
 	  
+          String trace_cmd = "";
 	  while( cmdloop )
 	    {
-	      if( Serial.available() > 0 )
-		{
-		  switch( Serial.read())
-		    {
-		    case 't':
-		      fast_mode = true;
-		      quiet = true;
-		      delay(100);
-		      fast_mode_n = get_parameter();
-		      cmdloop = false;
-		      break;
+              while ( Serial.available() == 0 );
 
-		    case 'n':
-		      fast_mode = true;
-		      quiet = true;
-		      delay(100);
-		      fast_mode_n = -1;
-		      fast_to_next_instruction = z80_registers.PC;
-                      get_parameter();  // Wipe anything in serial input
-		      cmdloop = false;
-		      break;
+              char c = Serial.read();
+              trace_cmd += c;
+              //Serial.print("Adding ");
+              //Serial.println(c);
+	      if( c == '\n' || c == '\r' )
+              {
+                //Serial.print("Action ");
+                //Serial.println(trace_cmd);
 
-		    case 'c':
-		      fast_mode = true;
-		      quiet = true;
-		      delay(100);
-		      fast_mode_n = -1;
-		      fast_to_address = get_hex_parameter();
-		      cmdloop = false;
-		      break;
+                switch( trace_cmd.charAt(0) )
+                {
+                case 't':
+                  fast_mode = true;
+                  quiet = true;
+                  delay(100);
+                  if( trace_cmd.length() > 2 )
+                    fast_mode_n = strtol((trace_cmd.c_str())+1, NULL, 10);
+                  else
+                    fast_mode_n = -1;
+                  cmdloop = false;
+                  break;
 
-		    case 'f':
-		      fast_mode = true;
-		      fast_mode_n = -1;
-		      quiet = true;
-		      break;
+                case 'n':
+                  fast_mode = true;
+                  quiet = true;
+                  delay(100);
+                  fast_mode_n = -1;
+                  fast_to_next_instruction = z80_registers.PC;
+                  cmdloop = false;
+                  break;
 
-		    case 'b':
-		      delay(100);
-		      trigger_address = get_hex_parameter();
-		      trigger_on = true;
-		      cmdloop=false;
-		      break;
+                case 'c':
+                  fast_mode = true;
+                  quiet = true;
+                  delay(100);
+                  fast_mode_n = -1;
+                  fast_to_address = strtol((trace_cmd.c_str())+1, NULL, 16);
+                  cmdloop = false;
+                  break;
 
-		    case 'B':
-		      trigger_on = !trigger_on;
-		      break;
+                case 'f':
+                  fast_mode = true;
+                  fast_mode_n = -1;
+                  quiet = true;
+                  break;
+
+                case 'b':
+                  delay(100);
+                  trigger_address = strtol((trace_cmd.c_str())+1, NULL, 16);
+                  trigger_on = true;
+                  cmdloop=false;
+                  break;
+
+                case 'B':
+                  trigger_on = !trigger_on;
+                  break;
 		      
-		    case 'M':
-		      // Select Mega control of reset and clock
-		      digitalWrite(SW0_Pin, HIGH);
-		      digitalWrite(SW1_Pin, LOW);
-		      break;
+                case 'M':
+                  // Select Mega control of reset and clock
+                  digitalWrite(SW0_Pin, HIGH);
+                  digitalWrite(SW1_Pin, LOW);
+                  break;
 		      
-		    case 'F':
-		      // Free run
+                case 'F':
+                  // Free run
 
-		      assert_signal(SIG_RES);
+                  assert_signal(SIG_RES);
 
-		      // Mega relinquishes control of reset and clock, letting hw have it
-		      //
-		      digitalWrite(SW0_Pin, LOW);
-		      digitalWrite(SW1_Pin, LOW);
+                  // Mega relinquishes control of reset and clock, letting hw have it
+                  //
+                  digitalWrite(SW0_Pin, LOW);
+                  digitalWrite(SW1_Pin, LOW);
 
-		      // Mega relinquishes IO and memory map
-		      //
-		      digitalWrite(MAPRQI_Pin, LOW);
-		      digitalWrite(MAPRQM_Pin, LOW);
+                  // Mega relinquishes IO and memory map
+                  //
+                  digitalWrite(MAPRQI_Pin, LOW);
+                  digitalWrite(MAPRQM_Pin, LOW);
 
-		      // Reset the Z80
-		      //
-		      reset_z80();
+                  // Reset the Z80
+                  //
+                  reset_z80();
 
-		      break;
+                  break;
+                  
+                case 'I':
+                  digitalWrite(MAPRQI_Pin, HIGH);
+                  break;
 
-		    case 'I':
-		      digitalWrite(MAPRQI_Pin, HIGH);
-		      break;
+                case 'i':
+                  digitalWrite(MAPRQI_Pin, LOW);
+                  break;
 
-		    case 'i':
-		      digitalWrite(MAPRQI_Pin, LOW);
-		      break;
+                case 'J':
+                  digitalWrite(MAPRQM_Pin, HIGH);
+                  break;
 
-		    case 'J':
-		      digitalWrite(MAPRQM_Pin, HIGH);
-		      break;
-
-		    case 'j':
-		      digitalWrite(MAPRQM_Pin, LOW);
-		      break;
+                case 'j':
+                  digitalWrite(MAPRQM_Pin, LOW);
+                  break;
 		      
-		    case 'G':
-		      bus_request();
-		      break;
+                case 'G':
+                  bus_request();
+                  break;
 		      
-		    case 'R':
-		      bus_release();
-		      break;
+                case 'R':
+                  bus_release();
+                  break;
 		      
-		    case 'r':
-		      cmd_reset_z80("");
-		      break;
+                case 'r':
+                  cmd_reset_z80("");
+                  break;
 
-		    case '1':
-		      assert_signal(SIG_RES);
-		      break;
+                case '1':
+                  assert_signal(SIG_RES);
+                  break;
 		  
-		    case '0':
-		      deassert_signal(SIG_RES);
-		      break;
+                case '0':
+                  deassert_signal(SIG_RES);
+                  break;
 		      
-		    case 'q':
-		      running = false;
-		      cmdloop = false;
-		      break;
+                case 'q':
+                  running = false;
+                  cmdloop = false;
+                  break;
 		      
-		    case '\r':
-		      cmdloop = false;
-		      break;
-		    }
-		}
+                case '\r':
+                  cmdloop = false;
+                  break;
+                }
+
+                trace_cmd = "";
+              }
 	      
 	    }
 	}
@@ -2324,6 +2333,9 @@ boolean handle_upload_record( int bank, int *bank_addr, int index, char record[]
   int address = 0;
   int byte;
 
+Serial.print("Upload record received: ");
+Serial.println(record);
+
   ascii_byte[0] = record[1];
   ascii_byte[1] = record[2];
   ascii_byte[2] = '\0';
@@ -2336,7 +2348,7 @@ boolean handle_upload_record( int bank, int *bank_addr, int index, char record[]
   ascii_address[4] = '\0';
   sscanf(ascii_address, "%x", &address);
 
-  Serial.print("\n");
+  Serial.print("\n\r");
   Serial.print("Address:");
   Serial.println(ascii_address);
   Serial.print("Length:");
@@ -2344,6 +2356,8 @@ boolean handle_upload_record( int bank, int *bank_addr, int index, char record[]
 	  
   if ( length == 0 )
   {
+    Serial.println("Done");
+    while(1);
     return 1;
   }
   else
@@ -2491,12 +2505,12 @@ void upload_to_bank_xonxoff(int bank)
     {
     case '\r':
     case '\n':
-      Serial.write(0x13);
+      Serial.write(0x13);  // XOFF while the data is written to flash
       Serial.flush();
 
       done = handle_upload_record( bank, &bank_addr, idx, ascii_data );
 
-      Serial.write(0x11);
+      Serial.write(0x11);  // XON
       Serial.flush();
 
       idx = 0;
@@ -2574,139 +2588,142 @@ void cmd_memory(String cmd)
       Serial.println(" (u:upload bin to flash bank 0)");
       Serial.println(" (return:next q:quit)");
       
-      while ( Serial.available() == 0)
-	{
-	}
-      Serial.println(Serial.available());
-
       cmdloop=true;
 
+      String memory_cmd = "";
       while( cmdloop )
 	{
-	  if( Serial.available() > 0 )
-	    {
-	      switch( Serial.read())
-		{
-		case 'u':
-		  // Upload binary file to flash bank 0
-		  Serial.println("Start upload of binary file. Will write to bank 0");
+          while( Serial.available() == 0 );
+
+          char c = Serial.read();
+          memory_cmd += c;
+          Serial.print( c ); Serial.flush();
+
+          if( c == '\n' || c == '\r' )
+          {
+            switch( memory_cmd.charAt(0) )
+            {
+            case 'u':
+              // Upload binary file to flash bank 0
+              Serial.println("Start upload of binary file. Will write to bank 0");
 		  
-		  upload_to_bank(0);
-		  break;
+              upload_to_bank(0);
+              break;
 
-		case 'U':
-		  // Upload binary file to flash bank 0
-		  Serial.println("Start upload of binary file with XON/XOFF. Will write to bank 0");
+            case 'U':
+              // Upload binary file to flash bank 0
+              Serial.println("Start upload of binary file with XON/XOFF. Will write to bank 0");
 		  
-		  upload_to_bank_xonxoff(0);
-		  break;
+              upload_to_bank_xonxoff(0);
+              break;
 		  
-		case 'r':
-		  // display memory at address
-		  char ads[10];
-		  BYTE d;
-		  address=working_address;
-		  for(int i=0; i<256; i++)
-		    {
-		      if( (i%16)==0)
-			{
-			  Serial.println("");
+            case 'r':
+              // display memory at address
+              char ads[10];
+              BYTE d;
+              address=working_address;
+              for(int i=0; i<256; i++)
+                {
+                  if( (i%16)==0)
+                    {
+                      Serial.println("");
+                      
+                      sprintf(ads, "%04X", address);
+                      Serial.print(ads);
+                      Serial.print(": ");
+                    }
+                  d = read_cycle(address, working_space);
+                  sprintf(ads, "%02X ", d);
+                  Serial.print(ads);
+                  address++;
+                }
+              Serial.println("");
+              break;
 
-			  sprintf(ads, "%04X", address);
-			  Serial.print(ads);
-			  Serial.print(": ");
-			}
-		      d = read_cycle(address, working_space);
-		      sprintf(ads, "%02X ", d);
-		      Serial.print(ads);
-		      address++;
-		    }
-		  Serial.println("");
-		  break;
+            case 'w':
+              delay(100);
+              write_cycle(working_address, strtol((memory_cmd.c_str())+1, NULL, 16), working_space);
+              break;
 
-		case 'w':
-		  delay(100);
-		  write_cycle(working_address, get_hex_parameter(), working_space);
-		  break;
+            case 'm':
+              working_space = SIG_MREQ;
+              break;
 
-		case 'm':
-		  working_space = SIG_MREQ;
-		  break;
-
-		case 'i':
-		  working_space = SIG_IOREQ;
-		  break;
+            case 'i':
+              working_space = SIG_IOREQ;
+              break;
 		  
-		case 'a':
-		  // Set address to manipulate
-		  delay(100);
-		  working_address = get_hex_parameter();
+            case 'a':
+              // Set address to manipulate
+              delay(100);
+              working_address = strtol((memory_cmd.c_str())+1, NULL, 16);
+              cmdloop=false;
+              break;
+              
+            case 'b':
+              // Write a bank value to bank register
+              delay(100);
+              
+              write_cycle(IO_ADDR_BANK, strtol((memory_cmd.c_str())+1, NULL, 16), SIG_IOREQ);
+              cmdloop=false;
+              break;
 
-		  cmdloop=false;
-		  break;
+            case 'e':
+              // Erase a sector
+              delay(100);
 
-		case 'b':
-		  // Write a bank value to bank register
-		  delay(100);
+              Serial.println("Starting erase...");
+              flash_erase(FLASH_ERASE_SECTOR_CMD, strtol((memory_cmd.c_str())+1, NULL, 16));
+              Serial.println("done.");
+              cmdloop=false;
+              break;
 
-		  write_cycle(IO_ADDR_BANK, get_hex_parameter(), SIG_IOREQ);
-		  cmdloop=false;
-		  break;
-
-		case 'e':
-		  // Erase a sector
-		  delay(100);
-
-		  Serial.println("Starting erase...");
-		  flash_erase(FLASH_ERASE_SECTOR_CMD, get_hex_parameter());
-		  Serial.println("done.");
-		  cmdloop=false;
-		  break;
-
-		case 'E':
-		  flush_serial();
+            case 'E':
+              flush_serial();
 		  
-		  // Erase a sector
-		  Serial.println("Starting chip erase...");
-		  flash_erase(FLASH_ERASE_CHIP_CMD, 0x5555);
-		  Serial.println("done.");
-		  cmdloop=false;
-		  break;
+              // Erase a sector
+              Serial.println("Starting chip erase...");
+              flash_erase(FLASH_ERASE_CHIP_CMD, 0x5555);
+              Serial.println("done.");
+              cmdloop=false;
+              break;
 
-		case 'X':
-		  //flush_serial();
-		  // Take the example code and write it to flash
-		  for(int i=0; i<example_code_length; i++)
-		    {
-		      flash_write_byte(0, i, example_code[i]);
-		    }
-		  break;
+            case 'X':
+              //flush_serial();
+              // Take the example code and write it to flash
+              for(int i=0; i<example_code_length; i++)
+                {
+                  flash_write_byte(0, i, example_code[i]);
+                }
+              break;
 
-		case 'Y':
-		  //flush_serial();
+            case 'Y':
+              //flush_serial();
 
-		  // Take the example code and write it to all banks of flash 
-		  for(int b=0; b<16;b++)
-		    {
-		      Serial.print("Writing to bank ");
-		      Serial.println(b);
-		      for(int i=0; i<example_code_length; i++)
-			{
-			  flash_write_byte(b, i, example_code[i]);
-			}
-		    }
-		  break;
+              // Take the example code and write it to all banks of flash 
+              for(int b=0; b<16;b++)
+                {
+                  Serial.print("Writing to bank ");
+                  Serial.println(b);
+                  for(int i=0; i<example_code_length; i++)
+                    {
+                      flash_write_byte(b, i, example_code[i]);
+                    }
+                }
+              break;
 		  
-		case 'q':
-		  running = false;
-		  cmdloop = false;
-		  break;
+            case 'q':
+              running = false;
+              cmdloop = false;
+              break;
 		      
-		case '\r':
-		  cmdloop = false;
-		  break;
-		}
-	    }
+            case '\r':
+              cmdloop = false;
+              break;
+            }
+
+            memory_cmd = "";
+          }
 	  
 	}
     }
