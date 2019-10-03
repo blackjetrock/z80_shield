@@ -2176,14 +2176,18 @@ void cmd_trace_test_code(String cmd)
 	  boolean cmdloop = true;
 	  
           String trace_cmd = "";
+          Serial.print("trace> "); Serial.flush();
 	  while( cmdloop )
 	    {
               while ( Serial.available() == 0 );
 
               char c = Serial.read();
               trace_cmd += c;
-              //Serial.print("Adding ");
-              //Serial.println(c);
+
+              // Echo back key
+              //
+              Serial.print( c ); Serial.flush();
+
 	      if( c == '\n' || c == '\r' )
               {
                 //Serial.print("Action ");
@@ -2310,6 +2314,7 @@ void cmd_trace_test_code(String cmd)
                   break;
                 }
 
+                Serial.print("trace> "); Serial.flush();
                 trace_cmd = "";
               }
 	      
@@ -2334,7 +2339,8 @@ boolean handle_upload_record( int bank, int *bank_addr, int index, char record[]
   int byte;
 
 Serial.print("Upload record received: ");
-Serial.println(record);
+Serial.print(record);
+Serial.flush();
 
   ascii_byte[0] = record[1];
   ascii_byte[1] = record[2];
@@ -2353,11 +2359,11 @@ Serial.println(record);
   Serial.println(ascii_address);
   Serial.print("Length:");
   Serial.println(length);
-	  
+
+  delay(2000);	  
   if ( length == 0 )
   {
     Serial.println("Done");
-    while(1);
     return 1;
   }
   else
@@ -2493,22 +2499,39 @@ void upload_to_bank_xonxoff(int bank)
   char c = 0;
   int idx = 0;
   boolean done = false;
-  char ascii_data[255];  
+  char ascii_data[4096];  
   int bank_addr = 0;
 
+      Serial.write(0x13);  // XOFF
+      Serial.flush();
   while( !done )
   {
-    while ( Serial.available() == 0);
-    c = Serial.read();
+      Serial.write(0x11);  // XON
+      Serial.flush();
+      while( Serial.available() == 0 );
+      Serial.write(0x13);  // XOFF
+      Serial.flush();
+
+      while( Serial.available() )
+      {
+          c = Serial.read();
+
+    Serial.println(c, HEX);
 
     switch(c)
     {
-    case '\r':
     case '\n':
-      Serial.write(0x13);  // XOFF while the data is written to flash
-      Serial.flush();
 
-      done = handle_upload_record( bank, &bank_addr, idx, ascii_data );
+      ascii_data[idx] = '\0';
+Serial.print("Deal with: ");
+Serial.println(ascii_data);
+Serial.print("Length: ");
+Serial.println(idx);
+Serial.flush();
+//      Serial.write(0x13);  // XOFF while the data is written to flash
+//      Serial.flush();
+ delay(2000);
+//      done = handle_upload_record( bank, &bank_addr, idx, ascii_data );
 
       Serial.write(0x11);  // XON
       Serial.flush();
@@ -2520,6 +2543,7 @@ void upload_to_bank_xonxoff(int bank)
       ascii_data[idx++] = c;
       break;
     }
+      }
   }
 }
 
@@ -2559,7 +2583,7 @@ void cmd_memory(String cmd)
 
       // Allow interaction
       Serial.print("Working address: ");
-      Serial.print(working_address, HEX);
+      Serial.print((unsigned short)working_address, HEX);
 
       Serial.print(" Space:");
       switch(working_space)
@@ -2590,6 +2614,7 @@ void cmd_memory(String cmd)
       
       cmdloop=true;
 
+      Serial.print("memory> "); Serial.flush();
       String memory_cmd = "";
       while( cmdloop )
 	{
@@ -2597,6 +2622,9 @@ void cmd_memory(String cmd)
 
           char c = Serial.read();
           memory_cmd += c;
+
+          // Echo back key
+          //
           Serial.print( c ); Serial.flush();
 
           if( c == '\n' || c == '\r' )
@@ -2723,6 +2751,7 @@ void cmd_memory(String cmd)
             }
 
             memory_cmd = "";
+            Serial.print("memory> "); Serial.flush();
           }
 	  
 	}
@@ -2809,6 +2838,10 @@ void run_monitor()
       // for that command
       //
       c = Serial.read();
+
+      // Echo back key
+      //
+      Serial.print( c ); Serial.flush();
 
       switch(c)
 	{
