@@ -2329,62 +2329,6 @@ void cmd_trace_test_code(String cmd)
 // Flow control:
 // After each line the transmitter should wait for a '+' character
 //
-
-boolean handle_upload_record( int bank, int *bank_addr, int index, char record[] )
-{
-  char ascii_byte[3];
-  char ascii_address[5];
-  int length = 0;
-  int address = 0;
-  int byte;
-
-Serial.print("Upload record received: ");
-Serial.print(record);
-Serial.flush();
-
-  ascii_byte[0] = record[1];
-  ascii_byte[1] = record[2];
-  ascii_byte[2] = '\0';
-  sscanf(ascii_byte, "%x", &length);
-	  
-  ascii_address[0] = record[3];
-  ascii_address[1] = record[4];
-  ascii_address[2] = record[5];
-  ascii_address[3] = record[6];
-  ascii_address[4] = '\0';
-  sscanf(ascii_address, "%x", &address);
-
-  Serial.print("\n\r");
-  Serial.print("Address:");
-  Serial.println(ascii_address);
-  Serial.print("Length:");
-  Serial.println(length);
-
-  delay(2000);	  
-  if ( length == 0 )
-  {
-    Serial.println("Done");
-    return 1;
-  }
-  else
-  {
-    int j;
-    for(j=9; j<index-3; j+=2)
-    {
-      ascii_byte[0] = record[j];
-      ascii_byte[1] = record[j+1];
-      ascii_byte[2] = '\0';
-
-      sscanf(ascii_byte, "%x", &byte);
-
-      // Write data to flash
-      flash_write_byte(bank, (*bank_addr)++, byte);
-    }
-  }
-
-  return 0;
-}
-
 void upload_to_bank(int bank)
 {
   char c = 0;
@@ -2494,58 +2438,6 @@ void upload_to_bank(int bank)
 }
 
 
-void upload_to_bank_xonxoff(int bank)
-{
-  char c = 0;
-  int idx = 0;
-  boolean done = false;
-  char ascii_data[4096];  
-  int bank_addr = 0;
-
-      Serial.write(0x13);  // XOFF
-      Serial.flush();
-  while( !done )
-  {
-      Serial.write(0x11);  // XON
-      Serial.flush();
-      while( Serial.available() == 0 );
-      Serial.write(0x13);  // XOFF
-      Serial.flush();
-
-      while( Serial.available() )
-      {
-          c = Serial.read();
-
-    Serial.println(c, HEX);
-
-    switch(c)
-    {
-    case '\n':
-
-      ascii_data[idx] = '\0';
-Serial.print("Deal with: ");
-Serial.println(ascii_data);
-Serial.print("Length: ");
-Serial.println(idx);
-Serial.flush();
-//      Serial.write(0x13);  // XOFF while the data is written to flash
-//      Serial.flush();
- delay(2000);
-//      done = handle_upload_record( bank, &bank_addr, idx, ascii_data );
-
-      Serial.write(0x11);  // XON
-      Serial.flush();
-
-      idx = 0;
-      break;
-
-    default:
-      ascii_data[idx++] = c;
-      break;
-    }
-      }
-  }
-}
 
 ////////////////////////////////////////////////////////////////////////////////
 //
@@ -2638,13 +2530,6 @@ void cmd_memory(String cmd)
               upload_to_bank(0);
               break;
 
-            case 'U':
-              // Upload binary file to flash bank 0
-              Serial.println("Start upload of binary file with XON/XOFF. Will write to bank 0");
-		  
-              upload_to_bank_xonxoff(0);
-              break;
-		  
             case 'r':
               // display memory at address
               char ads[10];
