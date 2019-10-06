@@ -2176,14 +2176,18 @@ void cmd_trace_test_code(String cmd)
 	  boolean cmdloop = true;
 	  
           String trace_cmd = "";
+          Serial.print("trace> "); Serial.flush();
 	  while( cmdloop )
 	    {
               while ( Serial.available() == 0 );
 
               char c = Serial.read();
               trace_cmd += c;
-              //Serial.print("Adding ");
-              //Serial.println(c);
+
+              // Echo back key
+              //
+              Serial.print( c ); Serial.flush();
+
 	      if( c == '\n' || c == '\r' )
               {
                 //Serial.print("Action ");
@@ -2310,6 +2314,7 @@ void cmd_trace_test_code(String cmd)
                   break;
                 }
 
+                Serial.print("trace> "); Serial.flush();
                 trace_cmd = "";
               }
 	      
@@ -2324,61 +2329,6 @@ void cmd_trace_test_code(String cmd)
 // Flow control:
 // After each line the transmitter should wait for a '+' character
 //
-
-boolean handle_upload_record( int bank, int *bank_addr, int index, char record[] )
-{
-  char ascii_byte[3];
-  char ascii_address[5];
-  int length = 0;
-  int address = 0;
-  int byte;
-
-Serial.print("Upload record received: ");
-Serial.println(record);
-
-  ascii_byte[0] = record[1];
-  ascii_byte[1] = record[2];
-  ascii_byte[2] = '\0';
-  sscanf(ascii_byte, "%x", &length);
-	  
-  ascii_address[0] = record[3];
-  ascii_address[1] = record[4];
-  ascii_address[2] = record[5];
-  ascii_address[3] = record[6];
-  ascii_address[4] = '\0';
-  sscanf(ascii_address, "%x", &address);
-
-  Serial.print("\n\r");
-  Serial.print("Address:");
-  Serial.println(ascii_address);
-  Serial.print("Length:");
-  Serial.println(length);
-	  
-  if ( length == 0 )
-  {
-    Serial.println("Done");
-    while(1);
-    return 1;
-  }
-  else
-  {
-    int j;
-    for(j=9; j<index-3; j+=2)
-    {
-      ascii_byte[0] = record[j];
-      ascii_byte[1] = record[j+1];
-      ascii_byte[2] = '\0';
-
-      sscanf(ascii_byte, "%x", &byte);
-
-      // Write data to flash
-      flash_write_byte(bank, (*bank_addr)++, byte);
-    }
-  }
-
-  return 0;
-}
-
 void upload_to_bank(int bank)
 {
   char c = 0;
@@ -2488,40 +2438,6 @@ void upload_to_bank(int bank)
 }
 
 
-void upload_to_bank_xonxoff(int bank)
-{
-  char c = 0;
-  int idx = 0;
-  boolean done = false;
-  char ascii_data[255];  
-  int bank_addr = 0;
-
-  while( !done )
-  {
-    while ( Serial.available() == 0);
-    c = Serial.read();
-
-    switch(c)
-    {
-    case '\r':
-    case '\n':
-      Serial.write(0x13);  // XOFF while the data is written to flash
-      Serial.flush();
-
-      done = handle_upload_record( bank, &bank_addr, idx, ascii_data );
-
-      Serial.write(0x11);  // XON
-      Serial.flush();
-
-      idx = 0;
-      break;
-
-    default:
-      ascii_data[idx++] = c;
-      break;
-    }
-  }
-}
 
 ////////////////////////////////////////////////////////////////////////////////
 //
@@ -2559,7 +2475,7 @@ void cmd_memory(String cmd)
 
       // Allow interaction
       Serial.print("Working address: ");
-      Serial.print(working_address, HEX);
+      Serial.print((unsigned short)working_address, HEX);
 
       Serial.print(" Space:");
       switch(working_space)
@@ -2590,6 +2506,7 @@ void cmd_memory(String cmd)
       
       cmdloop=true;
 
+      Serial.print("memory> "); Serial.flush();
       String memory_cmd = "";
       while( cmdloop )
 	{
@@ -2597,6 +2514,9 @@ void cmd_memory(String cmd)
 
           char c = Serial.read();
           memory_cmd += c;
+
+          // Echo back key
+          //
           Serial.print( c ); Serial.flush();
 
           if( c == '\n' || c == '\r' )
@@ -2610,13 +2530,6 @@ void cmd_memory(String cmd)
               upload_to_bank(0);
               break;
 
-            case 'U':
-              // Upload binary file to flash bank 0
-              Serial.println("Start upload of binary file with XON/XOFF. Will write to bank 0");
-		  
-              upload_to_bank_xonxoff(0);
-              break;
-		  
             case 'r':
               // display memory at address
               char ads[10];
@@ -2723,6 +2636,7 @@ void cmd_memory(String cmd)
             }
 
             memory_cmd = "";
+            Serial.print("memory> "); Serial.flush();
           }
 	  
 	}
@@ -2809,6 +2723,10 @@ void run_monitor()
       // for that command
       //
       c = Serial.read();
+
+      // Echo back key
+      //
+      Serial.print( c ); Serial.flush();
 
       switch(c)
 	{

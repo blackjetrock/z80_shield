@@ -14,3 +14,10 @@
 *.bak[0-9]
 *~
 *.cnc
+
+*.c.lis
+*.ihx
+*.lis
+*.rom
+*.bin
+zcc_opt.def
