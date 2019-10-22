@@ -26,6 +26,11 @@ proc write_data {txt} {
 # data channels allow hidden data to be sent to the terminal, these are displayed in
 # separate windows
 
+set ::DC_START 0
+set ::DC_NUM   0
+set ::DC_DATA  0
+set ::DC_STREAM ""
+
 proc read_data {f} {
     set tx [read $f]
     puts "R:"
@@ -34,7 +39,29 @@ proc read_data {f} {
     set chars [split $tx ""]
     
     foreach char $chars {
+	if { $::DC_START } {
+	    # Next character is data channel number
+	    set ::DC_NUM $char
+	    set ::DC_START 0
+	    set ::DC_DATA 1
+	    set ::DC_STREAM ""
+	    continue
+	}
+
+	
 	switch $char {
+	    "^" {
+		# data channel start marker, this can be changed to chars with top bit set later
+		set ::DC_START 1
+		continue
+	    }
+	    "$" {
+		# End of data channel
+		set ::DC_DATA 0
+		data$::DC_NUM $::DC_STREAM		
+		continue
+	    }
+	    
 	    "\n" {
 	    }
 	    
@@ -43,9 +70,14 @@ proc read_data {f} {
 		.t.text insert end "\n"
 	    }
 	    default {
-		puts -nonewline $char
-		.t.text insert end $char
-		.t.text yview end
+		if { $::DC_DATA } {
+		    # Characters have to go to data channel stream
+		    set ::DC_STREAM "$::DC_STREAM$char"
+		} else {
+		    puts -nonewline $char
+		    .t.text insert end $char
+		    .t.text yview end
+		}
 	    }
 	}
     }
@@ -56,7 +88,10 @@ proc read_data {f} {
 # Open window for a data channel
 #
 
+toplevel .data
+
 proc open_data_channel_window {w} {
+    
     frame $w
     text $w.text -xscrollcommand [list $w.xscroll set] -yscrollcommand [list $w.yscroll set] -width 80 -height 25
     scrollbar $w.xscroll -orient horizontal -command [list $w.text xview]
@@ -113,8 +148,6 @@ proc send_ihx_file {filename f} {
 	} else {
 	    puts "Flushed '$tx '"
 	}
-	
-	
     }
     
     puts "Sending $filename"
@@ -162,13 +195,39 @@ proc send_ihx_file_dialog {} {
 	{{IHX Files} {.ihx}}
     }
     
-    set filename [tk_getOpenFile -initialdir ../z80_c -filetypes $types ]
+    set filename [tk_getOpenFile -initialdir ../z80_c -filetypes $types]
 
     if { $filename != "" } {
 	send_ihx_file $filename $f
     }
 }
 
+####################################################################################################
+#
+# Data channel window handlers
+#
+#
+
+# Register value window
+
+proc data0 {data} {
+    puts "**data 0 : '$data' **"
+    set w .data.0.text
+    switch -regexp $data {
+	"PC:...." {
+	    $w delete 1.0 1.end
+	    $w insert 1.0 "$data"
+	}
+	"AF:...." {
+	    $w delete 2.0 2.end
+	    $w insert 2.0 "$data"
+	}
+	"BC:...." {
+	    $w delete 3.0 3.end
+	    $w insert 3.0 "$data"
+	}
+    }
+}
 
 ####################################################################################################
 #
@@ -219,14 +278,13 @@ proc open_terminal_window {w} {
     return $w.text
 }
 
-# fconfigure $chan -mode $Term(Mode) -translation binary -buffering none -blocking 0
-
-
 open_terminal_window .t
 pack .t -side top -fill both -expand true
 
-open_data_channel_window .regs
-pack .t -side top -fill both -expand true
+# Open register value display window
+open_data_channel_window .data.0
+pack .data.0 -side top -fill both -expand true
+.data.0.text  insert end "PC:0000\nAF:0000\nBC:0000"
 
 # Drop into event loop...
 write_data "\n"

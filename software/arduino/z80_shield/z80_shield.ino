@@ -322,6 +322,7 @@ INSTRUCTION instruction[256] =
 struct Z80_REGISTERS
 {
   uint16_t PC;
+  uint16_t AF;
 
   // Define the rest when we can do somthing with them
 };
@@ -610,6 +611,7 @@ void reset_z80()
   deassert_signal(SIG_RES);
 
   z80_registers.PC = 0;
+  
 }
 
 // Do a half t state
@@ -1078,12 +1080,16 @@ void dump_z80_registers()
       return;
     }
 
-  Serial.println("\nZ80 Registers (which are known): ");
-
-  Serial.println("=== ====");
-  Serial.print("PC: ");
-  Serial.println( to_hex(z80_registers.PC, 4) );
-  Serial.println("=== ====\n");
+//  Serial.println("\nZ80 Registers (which are known): ");
+  Serial.print("^0PC:");
+  Serial.print( to_hex(z80_registers.PC, 4) );
+  Serial.print("$");
+  Serial.print("^0AF:");
+  Serial.print( to_hex(z80_registers.AF, 4) );
+  Serial.print("$");
+  Serial.print("^0BC:");
+  Serial.print( to_hex(z80_registers.PC+2, 4) );
+  Serial.print("$");
 }
 
 void dump_misc_signals()
