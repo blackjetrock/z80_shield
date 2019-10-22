@@ -982,6 +982,7 @@ void set_addr_state(int address)
 
 unsigned int data_state()
 {
+//return ( PORTC );
   unsigned int a = 0;
 
   // Get all the data lines and accumulate the data
