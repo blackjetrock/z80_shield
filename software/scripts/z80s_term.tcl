@@ -57,19 +57,15 @@ proc read_data {f} {
 #
 
 proc open_data_channel_window {w} {
-     frame $w
-     eval {text $w.text \
-         -xscrollcommand [list $w.xscroll set] \
-         -yscrollcommand [list $w.yscroll set]} -width 80 -height 25
-     scrollbar $w.xscroll -orient horizontal \
-         -command [list $w.text xview]
-     scrollbar $w.yscroll -orient vertical \
-         -command [list $w.text yview]
-     grid $w.text $w.yscroll -sticky news
-     grid $w.xscroll -sticky news
-     grid rowconfigure    $w 0 -weight 1
-     grid columnconfigure $w 0 -weight 1
-
+    frame $w
+    text $w.text -xscrollcommand [list $w.xscroll set] -yscrollcommand [list $w.yscroll set] -width 80 -height 25
+    scrollbar $w.xscroll -orient horizontal -command [list $w.text xview]
+    scrollbar $w.yscroll -orient vertical -command [list $w.text yview]
+    grid $w.text $w.yscroll -sticky news
+    grid $w.xscroll -sticky news
+    grid rowconfigure    $w 0 -weight 1
+    grid columnconfigure $w 0 -weight 1
+    
     return $w.text
 }
 
@@ -78,31 +74,13 @@ proc open_data_channel_window {w} {
 # Send .IHX file to mega
 #
 
-proc send_ihx_file {filename device} {
+proc send_ihx_file {filename f} {
     
     # Read the hex file
     
-    set f [open $filename]
-    set txt [read $f]
-    close $f
-    
-    # Open the hex file and send it to the sketch
-    puts "Opening $device"
-    set f [open $device r+]
-    #set f [open /dev/tty  r+]
-    #fconfigure $f -mode 9600,n,8,1
-    #fconfigure $f -handshake none
-    fconfigure $f -blocking 0
-    
-    if { 0 } {
-	while { 1 } {
-	    puts $f "S\n"
-	    set d [read $f]
-	    if { [string length $d] > 0 } {
-		puts $d
-	    }
-	}
-    }
+    set g [open $filename]
+    set txt [read $g]
+    close $g
     
     # Flush
     puts "Flushing..."
@@ -178,7 +156,7 @@ proc send_ihx_file {filename device} {
 #
 
 proc send_ihx_file_dialog {} {
-    global device
+    global f
     
     set types {
 	{{IHX Files} {.ihx}}
@@ -187,7 +165,7 @@ proc send_ihx_file_dialog {} {
     set filename [tk_getOpenFile -initialdir ../z80_c -filetypes $types ]
 
     if { $filename != "" } {
-	send_ihx_file $filename $device
+	send_ihx_file $filename $f
     }
 }
 
@@ -201,7 +179,7 @@ proc open_terminal_window {w} {
     frame $w
     eval {text $w.text \
 	      -xscrollcommand [list $w.xscroll set] \
-	      -yscrollcommand [list $w.yscroll set]} -width 80 -height 25
+	      -yscrollcommand [list $w.yscroll set]} -width 135 -height 40
     scrollbar $w.xscroll -orient horizontal \
 	-command [list $w.text xview]
     scrollbar $w.yscroll -orient vertical \
