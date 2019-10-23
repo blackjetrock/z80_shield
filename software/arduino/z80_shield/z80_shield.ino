@@ -8,6 +8,8 @@
 // which case you only need to remember to write your code/data to flash once. :)
 //
 #define ENABLE_MEGA_ROM_EMULATION 0
+#define ENABLE_DIRECT_PORT_ACCESS 1
+#define ENABLE_TIMINGS            1
 
 typedef unsigned char BYTE;
 typedef void (*FPTR)();
@@ -934,6 +936,9 @@ void initialise_z80_for_control()
 
 unsigned int addr_state()
 {
+#if ENABLE_DIRECT_PORT_ACCESS
+  return(PINA + (PINB << 8));
+#else
   unsigned int a = 0;
 
   // Get all the address lines and accumulate the address
@@ -955,7 +960,8 @@ unsigned int addr_state()
 	}
     }
   
-  return(a);  
+  return(a);
+#endif
 }
 
 // drive address bus
@@ -978,13 +984,30 @@ void set_addr_state(int address)
     }
 }
 
+// Inverts bits in an 8 bit value
+unsigned int invert_byte(unsigned int x)
+{
+#define BIT(X, BITNUM, NEWBITNUM)  (((X & (1<<BITNUM)) >> BITNUM) << NEWBITNUM)
+
+return( BIT(x,0,7)+
+	BIT(x,1,6)+
+	BIT(x,2,5)+
+	BIT(x,3,4)+
+	BIT(x,4,3)+
+	BIT(x,5,2)+
+	BIT(x,6,1)+
+	BIT(x,7,0));
+}
+
 // Returns data bus state, ie data on bus
 
 unsigned int data_state()
 {
-//return ( PORTC );
+#if ENABLE_DIRECT_PORT_ACCESS
+  return ( invert_byte(PINC) );
+#else
   unsigned int a = 0;
-
+  
   // Get all the data lines and accumulate the data
   for(int i=7; i>=0; i--)
     {
@@ -1002,15 +1025,20 @@ unsigned int data_state()
 	  break;
 	}
     }
-  
-  return(a);  
+
+  return(a);
+#endif
 }
 
 // Sets data bus value
 void set_data_state(unsigned int x)
 {
+#if ENABLE_DIRECT_PORT_ACCESS
+  PORTC = invert_byte(x);
+#else
+  
   unsigned int a = x;
-
+  
   // Get all the data lines and accumulate the data
   for(int i=0; i<8; i++)
     {
@@ -1027,6 +1055,7 @@ void set_data_state(unsigned int x)
 	}
       a >>= 1;
     }
+#endif
 }
 
 
@@ -1985,7 +2014,8 @@ void cmd_trace_test_code(String cmd)
 {
   (void)cmd;
   boolean running = true;
-
+  unsigned long start, end;
+  
 #ifdef __UNUSED_CODE__
   int cycle_type = CYCLE_NONE;
   int cycle_dir = CYCLE_DIR_NONE;
@@ -2200,6 +2230,10 @@ void cmd_trace_test_code(String cmd)
                 //Serial.print("Action ");
                 //Serial.println(trace_cmd);
 
+#if ENABLE_TIMINGS
+	    start = millis();
+#endif
+
                 switch( trace_cmd.charAt(0) )
                 {
                 case 't':
@@ -2235,6 +2269,7 @@ void cmd_trace_test_code(String cmd)
                   fast_mode = true;
                   fast_mode_n = -1;
                   quiet = true;
+		  cmdloop=false;
                   break;
 
                 case 'b':
@@ -2320,7 +2355,13 @@ void cmd_trace_test_code(String cmd)
                   cmdloop = false;
                   break;
                 }
-
+		
+#if ENABLE_TIMINGS
+		end = millis();
+		Serial.print("Elapsed:");
+		Serial.print(end-start);
+		Serial.println("ms");
+#endif		  
                 Serial.print("trace> "); Serial.flush();
                 trace_cmd = "";
               }
@@ -2464,6 +2505,7 @@ void cmd_memory(String cmd)
   int address = 0;
   int working_address = 0;
   int working_space = SIG_MREQ;
+  unsigned long start, end;
   
   // Grab the bus from the Z80 as we are going to do memory accesses ourselves
   bus_request();
@@ -2528,6 +2570,10 @@ void cmd_memory(String cmd)
 
           if( c == '\n' || c == '\r' )
           {
+#if ENABLE_TIMINGS
+	    start = millis();
+#endif
+	    
             switch( memory_cmd.charAt(0) )
             {
             case 'u':
@@ -2642,6 +2688,13 @@ void cmd_memory(String cmd)
               break;
             }
 
+#if ENABLE_TIMINGS
+		  end = millis();
+		  Serial.print("Elapsed:");
+		  Serial.print(end-start);
+		  Serial.println("ms");
+#endif		  
+
             memory_cmd = "";
             Serial.print("memory> "); Serial.flush();
           }
@@ -2698,10 +2751,12 @@ struct
     {"---",  "",                   cmd_dummy},
   };
 
+
+
 void print_commands()
 {
   int i = 0;
-
+  
   Serial.println( "\nCommand Menu" );
   Serial.println( "============\n" );
 
@@ -2717,6 +2772,7 @@ void print_commands()
 // Interaction with the Mega from the host PC is through a 'monitor' command line type interface.
 
 const String monitor_cmds = "t: Trace code l:list example code s:set code m:memory";
+
 void run_monitor()
 {
   char c;
@@ -2744,15 +2800,27 @@ void run_monitor()
 	      test = cmd.substring(0, (cmdlist[i].cmdname).length());
 	      if( test == cmdlist[i].cmdname )
 		{
+		  unsigned long start, end;
+
 		  // Found, run the handler then represent the menu
 		  //
+		  
+#if ENABLE_TIMINGS
+		  start = millis();
+#endif
 		  (*(cmdlist[i].handler))(cmd);
+#if ENABLE_TIMINGS
+		  end = millis();
+		  Serial.print("Elapsed:");
+		  Serial.print(end-start);
+		  Serial.println("ms");
+#endif		  
 		  print_commands();
-
+		  
 		  Serial.print("\n");
 		}
 	    }
-
+	  
 	  cmd = "";
 	  break;
 
