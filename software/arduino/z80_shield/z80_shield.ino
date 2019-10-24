@@ -2,14 +2,16 @@
 // Arduino Mega sketch for the Z80 shield
 // Serial monitor based control program
 //
+#include <string.h>
 
 // If you enable this, the Mega will supply data from its own internal buffer when the Z80
 // reads bytes from the ROM (i.e. Flash). Turn it off for the flash to supply the bytes, in
 // which case you only need to remember to write your code/data to flash once. :)
 //
-#define ENABLE_MEGA_ROM_EMULATION 0
-#define ENABLE_DIRECT_PORT_ACCESS 1
-#define ENABLE_TIMINGS            0
+#define ENABLE_MEGA_ROM_EMULATION   0
+#define ENABLE_DIRECT_PORT_ACCESS   1
+#define ENABLE_TIMINGS              0
+#define TRACE_SIZE                 20
 
 typedef unsigned char BYTE;
 typedef void (*FPTR)();
@@ -164,9 +166,86 @@ enum
     EV_A_RES,    EV_D_RES,
     EV_A_MAPRQM, EV_D_MAPRQM,
     EV_A_MAPRQI, EV_D_MAPRQI,
+    EV_A_NULL,   EV_D_NULL,       // just used for initialisation
   };
 
+// Tracing
+typedef enum
+{
+  TRT_INVALID,
+  TRT_MEM_RD,
+  TRT_MEM_WR,
+  TRT_IO_RD,
+  TRT_IO_WR,
+  TRT_OP_RD,    // Opcode fetch
+} TRACE_REC_TYPE;
+
+typedef struct
+{
+  TRACE_REC_TYPE type;
+  unsigned int data;
+  unsigned int addr;
+} TRACE_REC;
+
+// There's a performance degradation if tracing is on so allow it to be turned off
+int trace_on = 1;
+
+int trace_index = 0;
+TRACE_REC trace[TRACE_SIZE];
+
+char trace_rec_buf[40];
+char *textify_trace_rec(int i)
+{
+  char type[20];
+  
+  switch(trace[i].type)
+    {
+    case TRT_MEM_RD:
+      strcpy(type, "MEM RD");
+      break;
+
+    case TRT_MEM_WR:
+      strcpy(type, "MEM WR");
+      break;
+
+    case TRT_IO_RD:
+      strcpy(type, "IO  RD");
+      break;
+
+    case TRT_OP_RD:
+      strcpy(type, "OP  RD");
+      break;
+
+    case TRT_IO_WR:
+      strcpy(type, "IO  WR");
+      break;
+	     
+    default:
+      strcpy(type, "????");
+      break;
+    }
+  
+  sprintf(trace_rec_buf, "%d: %s %04X %02X", i, type, trace[i].addr, trace[i].data);
+  return(trace_rec_buf);
+}
+
+void trace_rec(TRACE_REC_TYPE trt)
+{
+  if ( trace_on )
+    {
+      trace[trace_index].type = trt;
+      trace[trace_index].data = data_state();
+      trace[trace_index].addr = addr_state();
+      trace_index++;
+      trace_index = trace_index % TRACE_SIZE;
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+//
 // IO addresses
+//
+
 const int IO_ADDR_PIO0    = 0x00;
 const int IO_ADDR_PIO0_AD = IO_ADDR_PIO0+0;
 const int IO_ADDR_PIO0_BD = IO_ADDR_PIO0+1;
@@ -188,19 +267,19 @@ const int IO_ADDR_BANK  = 0xC0;
 
 struct
 {
-  String signame;
-  String description;
-  String assertion_note;
+  const String signame;
+  const String description;
+  const String assertion_note;
   const int pin;
   int   current_state;
-  struct
+  const struct
   {
     int     mode;        // Mode
     uint8_t mode_dir;    // The direction we set this line when in this mode
     uint8_t mode_val;    // Default value for this mode
   } modes[2];
-  int     assert_ev;   // Assert event
-  int     deassert_ev; // Deassert event
+  const int     assert_ev;   // Assert event
+  const int     deassert_ev; // Deassert event
 }
 // The order in this list defines the order in which events will be raised, which affects how th e
 // bus state machine will be laid out.
@@ -211,6 +290,8 @@ struct
        BUSREQ_Pin, 0, {{MODE_SLAVE, OUTPUT, HIGH},{MODE_MEGA_MASTER, OUTPUT, LOW }}, EV_A_BUSREQ, EV_D_BUSREQ},
     {  "BUSACK", "Z80  --> Mega",   "    - Asserted, means Z80 acknowledges it's not in control of its buses",
        BUSACK_Pin, 0, {{MODE_SLAVE, INPUT,  HIGH},{MODE_MEGA_MASTER, INPUT,  HIGH}},  EV_A_BUSACK, EV_D_BUSACK},
+    {  "    M1", "Z80  --> Mega",   "    - Asserted, means Z80 is doing an opcode fetch cycle",
+       M1_Pin,     0, {{MODE_SLAVE, INPUT,  HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}},  EV_A_M1, EV_D_M1},
     {  "  MREQ", "Z80  --> Mega",   "    - Asserted, means address bus holds a memory address for a read or write",
        MREQ_Pin,   0, {{MODE_SLAVE, INPUT,  HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}},  EV_A_MREQ, EV_D_MREQ},
     {  " IOREQ", "Z80  --> Mega",   "    - Asserted, means lower half of address bus holds an IO address for a read or write",
@@ -219,8 +300,6 @@ struct
        WR_Pin,     0, {{MODE_SLAVE, INPUT,  HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}},  EV_A_WR, EV_D_WR},
     {  "    RD", "Z80  --> Mega",   "    - Asserted, means the Z80 wants to read data from external device",
        RD_Pin,     0, {{MODE_SLAVE, INPUT,  HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}},  EV_A_RD, EV_D_RD},
-    {  "    M1", "Z80  --> Mega",   "    - Asserted, means Z80 is doing an opcode fetch cycle",
-       M1_Pin,     0, {{MODE_SLAVE, INPUT,  HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}},  EV_A_M1, EV_D_M1},
     {  "  RFSH", "Z80  --> Mega",   "    - Asserted, means Z80 is in refresh state",
        RFSH_Pin,   0, {{MODE_SLAVE, INPUT,  HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}},  EV_A_RFSH, EV_D_RFSH},
     {  "   NMI", "Mega --> Z80",    "     - Asserted, means a non maskable interrupt is being sent to the Z80",
@@ -237,6 +316,8 @@ struct
        MAPRQM_Pin, 0, {{MODE_SLAVE, OUTPUT, HIGH},{MODE_MEGA_MASTER, OUTPUT, LOW }}, EV_A_MAPRQM, EV_D_MAPRQM},
     {  "MAPRQI", "Mega --> Shield", "  - Mega is not providing IO (GPIO, CTC) contents (real hardware is mapped)",
        MAPRQI_Pin, 0, {{MODE_SLAVE, OUTPUT, LOW },{MODE_MEGA_MASTER, OUTPUT, LOW }},  EV_A_MAPRQI, EV_D_MAPRQI},
+    {  "    X1", "Z80  --> Mega",   "    - Asserted, means Z80 is doing an opcode fetch cycle",
+       M1_Pin,     0, {{MODE_SLAVE, INPUT,  HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}},  EV_A_M1, EV_D_M1},
     {  "---",    "",                "",
        0,          0, {{MODE_SLAVE, INPUT,  HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}},  0, 0},
   };
@@ -246,11 +327,11 @@ enum
   {
     SIG_BUSREQ,
     SIG_BUSACK,
+    SIG_M1,
     SIG_MREQ,
     SIG_IOREQ,
     SIG_WR,
     SIG_RD,
-    SIG_M1,
     SIG_RFSH,
     SIG_NMI,
     SIG_INT,
@@ -265,19 +346,19 @@ enum
 
 struct TRANSITION
 {
-  int stim;
-  int next_state;
+  const int stim;
+  const int next_state;
 };
 
 #define NUM_ENTRY 2
-#define NUM_TRANS 3
+#define NUM_TRANS 4
 
 struct STATE
 {
-  int        statenum;
-  String     state_name;
-  FPTR       entry[NUM_ENTRY];
-  TRANSITION trans[NUM_TRANS];
+  const int        statenum;
+  const String     state_name;
+  const FPTR       entry[NUM_ENTRY];
+  const TRANSITION trans[NUM_TRANS];
 };
 
 int current_state;
@@ -291,14 +372,18 @@ enum
     STATE_OP4,
     STATE_OP5,
     STATE_RFSH1,
-    STATE_RFSH2,
     STATE_MEM1,
     STATE_MEM_RD,
     STATE_MEM_WR,
-    STATE_MEM_WR_END,
     STATE_MEM_RD_END,
-    
-    
+    STATE_MEM_WR_END,
+    STATE_IO1,
+    STATE_IO_RD,
+    STATE_IO_WR,
+    STATE_IO_RD_END,
+    STATE_IO_WR_END,
+
+    STATE_NULL,             // Used for initialisation
     STATE_NUM
   };
 
@@ -333,6 +418,16 @@ Z80_REGISTERS z80_registers;
 
 ////////////////////////////////////////////////////////////////////////////////
 //
+// Instruction trace
+//
+// Traces address and data values while code executes
+// Can be used for general debug and also used by the register dump facility
+//
+//
+
+
+////////////////////////////////////////////////////////////////////////////////
+//
 // Bus state machine
 //
 //
@@ -352,6 +447,12 @@ void entry_opcode3()
   inst_inst[0] = data_state();
 }
 
+void entry_trc_op()
+{
+  // Trace opcode
+  trace_rec(TRT_OP_RD);
+}
+
 const STATE bsm[] =
   {
     { 
@@ -363,6 +464,7 @@ const STATE bsm[] =
       {
 	{EV_A_M1,   STATE_OP1},
 	{EV_A_MREQ, STATE_MEM1},
+	{EV_A_IOREQ, STATE_IO1},
 	{EV_A_RFSH, STATE_RFSH1},
       }
     },
@@ -374,6 +476,9 @@ const STATE bsm[] =
       },
       {
 	{EV_A_MREQ, STATE_OP2},
+	{EV_A_NULL, STATE_NULL},
+	{EV_A_NULL, STATE_NULL},
+	{EV_A_NULL, STATE_NULL},
       }
     },
     { 
@@ -384,6 +489,9 @@ const STATE bsm[] =
       },
       {
 	{EV_A_RD, STATE_OP3},
+	{EV_A_NULL, STATE_NULL},
+	{EV_A_NULL, STATE_NULL},
+	{EV_A_NULL, STATE_NULL},
       }
     },
     { 
@@ -392,9 +500,13 @@ const STATE bsm[] =
       {
 	// same as a memory access
 	entry_mem_rd,
+	entry_trc_op,
       },
       {
 	{EV_D_RD, STATE_OP4},
+	{EV_A_NULL, STATE_NULL},
+	{EV_A_NULL, STATE_NULL},
+	{EV_A_NULL, STATE_NULL},
       }
     },
     { 
@@ -405,6 +517,9 @@ const STATE bsm[] =
       },
       {
 	{EV_D_M1, STATE_IDLE},
+	{EV_A_NULL, STATE_NULL},
+	{EV_A_NULL, STATE_NULL},
+	{EV_A_NULL, STATE_NULL},
       }
     },
     { 
@@ -415,6 +530,9 @@ const STATE bsm[] =
       },
       {
 	{EV_A_RD, STATE_OP3},
+	{EV_A_NULL, STATE_NULL},
+	{EV_A_NULL, STATE_NULL},
+	{EV_A_NULL, STATE_NULL},
       }
     },
     { 
@@ -425,6 +543,9 @@ const STATE bsm[] =
       },
       {
 	{EV_D_RFSH, STATE_IDLE},
+	{EV_A_NULL, STATE_NULL},
+	{EV_A_NULL, STATE_NULL},
+	{EV_A_NULL, STATE_NULL},
       }
     },
     //------------------------------------------------------------------------------
@@ -441,6 +562,8 @@ const STATE bsm[] =
       {
 	{EV_A_RD, STATE_MEM_RD},
 	{EV_A_WR, STATE_MEM_WR},
+	{EV_A_NULL, STATE_NULL},
+	{EV_A_NULL, STATE_NULL},
       }
     },
     { 
@@ -448,19 +571,26 @@ const STATE bsm[] =
       "Memory Read Access",
       {
 	entry_mem_rd,
+	entry_trc_mem_rd,
       },
       {
 	{EV_D_MREQ, STATE_MEM_RD_END},
+	{EV_A_NULL, STATE_NULL},
+	{EV_A_NULL, STATE_NULL},
+	{EV_A_NULL, STATE_NULL},
       }
     },
     { 
       STATE_MEM_WR,
       "Memory Write Access",
       {
-	entry_null,
+	entry_trc_mem_wr,
       },
       {
 	{EV_D_MREQ, STATE_MEM_WR_END},
+	{EV_A_NULL, STATE_NULL},
+	{EV_A_NULL, STATE_NULL},
+	{EV_A_NULL, STATE_NULL},
       }
     },
     { 
@@ -471,6 +601,9 @@ const STATE bsm[] =
       },
       {
 	{EV_D_RD, STATE_IDLE},
+	{EV_A_NULL, STATE_NULL},
+	{EV_A_NULL, STATE_NULL},
+	{EV_A_NULL, STATE_NULL},
       }
     },
     { 
@@ -481,8 +614,83 @@ const STATE bsm[] =
       },
       {
 	{EV_D_WR, STATE_IDLE},
+	{EV_A_NULL, STATE_NULL},
+	{EV_A_NULL, STATE_NULL},
+	{EV_A_NULL, STATE_NULL},
       }
     },
+#if 1
+    //------------------------------------------------------------------------------
+    // IO accesses
+    //
+    // 
+    //
+    { 
+      STATE_IO1,
+      "IO Access",
+      {
+	entry_null,
+      },
+      {
+	{EV_A_RD, STATE_IO_RD},
+	{EV_A_WR, STATE_IO_WR},
+	{EV_A_NULL, STATE_NULL},
+	{EV_A_NULL, STATE_NULL},
+      }
+    },
+    { 
+      STATE_IO_RD,
+      "IO Read Access",
+      {
+	entry_trc_io_rd,
+      },
+      {
+	{EV_D_IOREQ, STATE_IO_RD_END},
+	{EV_A_NULL, STATE_NULL},
+	{EV_A_NULL, STATE_NULL},
+	{EV_A_NULL, STATE_NULL},
+      }
+    },
+    { 
+      STATE_IO_WR,
+      "IO Write Access",
+      {
+	entry_trc_io_wr,
+      },
+      {
+	{EV_D_IOREQ, STATE_IO_WR_END},
+	{EV_A_NULL, STATE_NULL},
+	{EV_A_NULL, STATE_NULL},
+	{EV_A_NULL, STATE_NULL},
+      }
+    },
+    { 
+      STATE_IO_RD_END,
+      "IO Read Access END",
+      {
+	entry_null,
+      },
+      {
+	{EV_D_RD, STATE_IDLE},
+	{EV_A_NULL, STATE_NULL},
+	{EV_A_NULL, STATE_NULL},
+	{EV_A_NULL, STATE_NULL},
+      }
+    },
+    { 
+      STATE_IO_WR_END,
+      "IO Write Access End",
+      {
+	entry_null,
+      },
+      {
+	{EV_D_WR, STATE_IDLE},
+	{EV_A_NULL, STATE_NULL},
+	{EV_A_NULL, STATE_NULL},
+	{EV_A_NULL, STATE_NULL},
+      }
+    },
+#endif    
   };
 
 void entry_null()
@@ -507,7 +715,7 @@ void entry_mem1()
 
       if ( !fast_mode )
 	{
-	  Serial.print("Allowing RAM to put data on bus");
+	  Serial.print(F("Allowing RAM to put data on bus"));
 	  Serial.print(addr_state(), HEX);
 	  Serial.print(": ");
 	  Serial.print(data_state(), HEX);
@@ -531,13 +739,39 @@ void entry_mem_rd()
 
       if ( !fast_mode )
 	{
-	  Serial.print("Putting data on bus ");
+	  Serial.print(F("Putting data on bus "));
 	  Serial.print(addr_state(), HEX);
 	  Serial.print(" ");
 	  Serial.print(example_code[addr_state()], HEX);
 	}
     }
 #endif
+}
+
+void entry_trc_mem_rd()
+{
+  // Trace
+  
+  trace_rec(TRT_MEM_RD);
+
+}
+
+void entry_trc_mem_wr()
+{
+  // Trace
+  trace_rec(TRT_MEM_WR);
+}
+
+void entry_trc_io_rd()
+{
+  // Trace
+  trace_rec(TRT_IO_RD);
+}
+
+void entry_trc_io_wr()
+{
+  // Trace
+  trace_rec(TRT_IO_WR);
 }
 
 void entry_mem_rd_end()
@@ -674,7 +908,7 @@ void bus_request()
   
   while(  (signal_state("BUSACK") == HIGH) && !Serial.available())
     {
-      Serial.println("Clocking..");
+      Serial.println(F("Clocking.."));
       t_state();
     }
   
@@ -1118,7 +1352,7 @@ int signal_state(String signal)
 	  state = digitalRead(signal_list[i].pin);
 
 	  // Update current state
-	  signal_list[i].current_state = state;
+	  //signal_list[i].current_state = state;
 	}
     }
   
@@ -1284,6 +1518,7 @@ void signal_scan()
     {
       // If read state is different to current state then generate events
       int state  = digitalRead(signal_list[i].pin);
+
       if ( state != signal_list[i].current_state )
 	{
 	  if ( state == HIGH )
@@ -1298,7 +1533,6 @@ void signal_scan()
 	    }
 	  signal_list[i].current_state = state;
 	}
-      
     }
 }
 
@@ -1315,7 +1549,7 @@ void signal_event(int sig, int sense)
     {
       if ( !quiet )
 	{
-	  Serial.println(" ASSERT");
+	  Serial.println(F(" ASSERT"));
 	}
       run_bsm(signal_list[sig].assert_ev);
     }
@@ -1346,14 +1580,15 @@ int find_state_index(int state)
     }
 
   // Error, default to idle
-  Serial.println("***ERROR state not found ***");
+  Serial.println(F("***ERROR state not found ***"));
   return(STATE_IDLE);
 }
 
 void run_bsm(int stim)
 {
+ 
   int current_state_i = find_state_index(current_state);
-
+  
   // A stimulus has come in, put it into the bsm
   for(int i=0; i<NUM_TRANS; i++)
     {
@@ -1401,9 +1636,9 @@ void cmd_grab_z80(String cmd)
 
   initialise_z80_for_control();
 
-  Serial.println("\n-------------------------------------------------------------------");
-  Serial.println("The Arduino has grabbed the Z80, the Z80 is now the Arduino's slave");
-  Serial.println("-------------------------------------------------------------------");
+  Serial.println(F("\n-------------------------------------------------------------------"));
+  Serial.println(F("The Arduino has grabbed the Z80, the Z80 is now the Arduino's slave"));
+  Serial.println(F("-------------------------------------------------------------------"));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1453,7 +1688,7 @@ void cmd_dump_signals()
 // Test Z80 code
   
 // Writes to RAM then reads it back
-BYTE example_code_ram_chk[] =
+const BYTE example_code_ram_chk[] =
   {
     0x3e, 0xaa,          // LOOP:   LD A, 03EH
     0x21, 0x34, 0x82,    //         LD HL 01234H
@@ -1464,7 +1699,7 @@ BYTE example_code_ram_chk[] =
   };
 
 // Turns backlight off
-BYTE example_code_lcd_bl_off[] =
+const BYTE example_code_lcd_bl_off[] =
   {
     0x0e, IO_ADDR_PIO1_BC,    // LOOP:   LD C, 60H
     0x3e, 0xcf,            //         LD  A, Mode3 control word
@@ -1480,7 +1715,7 @@ BYTE example_code_lcd_bl_off[] =
   };
 
 // Turns backlight off
-BYTE example_code_lcd_bl_flash[] =
+const BYTE example_code_lcd_bl_flash[] =
   {
                     0x31,  0x00,  0x90,  //   0000 : 			LD SP, 9000H 
                            0x0e,  0x83,  //   0003 : 			LD   C, IO_ADDR_PIO1_BC 
@@ -1522,7 +1757,7 @@ BYTE example_code_lcd_bl_flash[] =
                                   0xc9,  //   004a : 				RET
   };
 
-BYTE example_code_lcd_slow_flash[] =
+const BYTE example_code_lcd_slow_flash[] =
   {
                                          //   0000 : IO_ADDR_PIO0:   EQU   80H   
                                          //   0000 : IO_ADDR_PIO0_AD:   EQU   IO_ADDR_PIO0+0   
@@ -1573,7 +1808,7 @@ BYTE example_code_lcd_slow_flash[] =
 // Writes some code to RAM then jumps to it
 // Code can then be free run
 
-BYTE example_code_ram[] =
+const BYTE example_code_ram[] =
   {
     0x16, 0x07,              //    LD   D,ENDCODE-RAMCODE   
     0x21, 0x00, 0x80,          //     LD   HL,8000H   
@@ -1596,7 +1831,7 @@ BYTE example_code_ram[] =
     
   };
 
-BYTE example_code_bank[] =
+const BYTE example_code_bank[] =
   {
     0x0e, 0xc0,          // LOOP:   LD C, 60H
     0x3e, 0xaa,          //         LD  A, AAH
@@ -1604,7 +1839,7 @@ BYTE example_code_bank[] =
     0xc3, 0x05, 0x00
   };
 
-BYTE example_code_lcd_test[] =
+const BYTE example_code_lcd_test[] =
   {
                     0x31,  0x00,  0x90,  //   0000 : 		START:	LD  SP, 9000H 
                            0x0e,  0x82,  //   0003 : 			LD   C, IO_ADDR_PIO1_AC 
@@ -1949,7 +2184,7 @@ struct
   BYTE  *code;
   int length;
 }
-  code_list[] =
+  const code_list[] =
     {
       {"Copy code to RAM and execute it", example_code_ram,          sizeof(example_code_ram)},
       {"Write value to bank register",    example_code_bank,         sizeof(example_code_bank)},
@@ -1967,7 +2202,7 @@ void cmd_set_example_code(String cmd)
 {
   if( cmd.length() == 1 )
   {
-    Serial.println("Set example code using 'sN' where 'N' is from the example code list");
+    Serial.println(F("Set example code using 'sN' where 'N' is from the example code list"));
     return;
   }
 
@@ -1985,10 +2220,10 @@ void cmd_set_example_code(String cmd)
 
   Serial.print("\nCode example "+arg+" has been set in the Mega memory. ");
 #if ENABLE_MEGA_ROM_EMULATION
-  Serial.println("Mega is emulating ROM in this sketch build, and will supply this code to the Z80.");
+  Serial.println(F("Mega is emulating ROM in this sketch build, and will supply this code to the Z80."));
 #else
-  Serial.println("This sketch build is not emulating ROM, so remember to write");
-  Serial.println("it to flash so the hardware runs it.");
+  Serial.println(F("This sketch build is not emulating ROM, so remember to write"));
+  Serial.println(F("it to flash so the hardware runs it."));
 #endif
 }
 
@@ -1996,8 +2231,8 @@ void cmd_show_example_code(String cmd)
 {
   (void)cmd;
 
-  Serial.println("\nCode examples in this build:");
-  Serial.println("----------------------------");
+  Serial.println(F("\nCode examples in this build:"));
+  Serial.println(F("----------------------------"));
   
   for(int i=0; code_list[i].code != 0; i++)
     {
@@ -2006,7 +2241,7 @@ void cmd_show_example_code(String cmd)
       Serial.println(code_list[i].desc);
     }
 
-  Serial.println("\nUse 's' option of command menu to set one of these code examples");
+  Serial.println(F("\nUse 's' option of command menu to set one of these code examples"));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -2223,36 +2458,38 @@ void cmd_trace_test_code(String cmd)
 	  // Allow interaction
 	  if ( trigger_on )
 	    {
-	      Serial.print("\nBreakpoint active:");
+	      Serial.print(F("\nBreakpoint active:"));
 	      Serial.println(trigger_address & 0xffff, HEX);
 	    }
 	  
-	  Serial.println( "\nTrace Menu" );
-          Serial.println( "==========" );
+	  Serial.println( F("\nTrace Menu") );
+          Serial.println( F("==========") );
 
-	  Serial.println("t:Mega drive n tstates       f:Mega drive tstates forever");
-	  Serial.println("c:Mega drive tstates, continues to given Z80 instruction address");
-	  Serial.println("n:Mega drive tstates until next Z80 instruction\n");
-	  Serial.println("F:Free run (at ~4.5MHz)      M:Mega provide clock (at ~80Hz)");
-	  Serial.println("G:Mega take Z80 bus (BUSREQ) R:Mega release Z80 bus");
-	  Serial.println("I:Mega take IO map           i:Hardware take IO map");
-	  Serial.println("J:Mega take memory map       j:Hardware take memory map\n");
-	  Serial.println("r:reset Z80");
-	  Serial.println("1:assert reset               0:deassert reset             d:dump regs (coming soon!)");
-	  Serial.println("b:Breakpoint                 B:Toggle breakpoint\n");
-	  Serial.println("return: drive half a clock   q:quit menu");
+	  Serial.println(F("t:Mega drive n tstates       f:Mega drive tstates forever"));
+	  Serial.println(F("c:Mega drive tstates, continues to given Z80 instruction address"));
+	  Serial.println(F("n:Mega drive tstates until next Z80 instruction\n"));
+	  Serial.println(F("F:Free run (at ~4.5MHz)      M:Mega provide clock (at ~80Hz)"));
+	  Serial.println(F("G:Mega take Z80 bus (BUSREQ) R:Mega release Z80 bus"));
+	  Serial.println(F("I:Mega take IO map           i:Hardware take IO map"));
+	  Serial.println(F("J:Mega take memory map       j:Hardware take memory map\n"));
+	  Serial.println(F("r:reset Z80"));
+	  Serial.println(F("1:assert reset               0:deassert reset             d:dump regs (coming soon!)"));
+	  Serial.println(F("b:Breakpoint                 B:Toggle breakpoint\n"));
+	  Serial.println(F("return: drive half a clock   q:quit menu"));
 
 #if ENABLE_TIMINGS
-	  Serial.print("Elapsed:");
+	  Serial.print(F("Elapsed:"));
 	  Serial.print(t_now-t_last);
 	  t_last = t_now;
-	  Serial.println("ms");
+	  Serial.println(F("ms"));
 #endif
 	  
 	  boolean cmdloop = true;
 	  
           String trace_cmd = "";
-          Serial.print("trace> "); Serial.flush();
+          Serial.print(F("trace> "));
+	  Serial.flush();
+	  
 	  while( cmdloop )
 	    {
               while ( Serial.available() == 0 );
@@ -2277,7 +2514,7 @@ void cmd_trace_test_code(String cmd)
 #if ENABLE_TIMINGS
 		case 'z':
 		  // Display stored timing information
-		  Serial.println("Mega CLK timing");
+		  Serial.println(F("Mega CLK timing"));
 		  average = 0;
 		  
 		  for(int i=0; i<NUM_TIMED_CLKS;i++)
@@ -2287,7 +2524,7 @@ void cmd_trace_test_code(String cmd)
 		      average += last_clks[i];
 		    }
 		  Serial.println("");
-		  Serial.print("Average:");
+		  Serial.print(F("Average:"));
 		  Serial.println(average / NUM_TIMED_CLKS);
 		  
 		  break;
@@ -2407,13 +2644,23 @@ void cmd_trace_test_code(String cmd)
                   running = false;
                   cmdloop = false;
                   break;
-		      
+
+
+		case '-':
+		  // Display trace data
+		  Serial.println(F("Trace"));
+		  for(int i=0; i<TRACE_SIZE;i++)
+		    {
+		      Serial.println(textify_trace_rec(i));
+		    }
+		  break;
+		  
                 case '\r':
                   cmdloop = false;
                   break;
                 }
 		
-                Serial.print("trace> "); Serial.flush();
+                Serial.print(F("trace> ")); Serial.flush();
                 trace_cmd = "";
               }
 	      
@@ -2501,9 +2748,9 @@ void upload_to_bank(int bank)
 	  ascii_address[4] = '\0';
 	  sscanf(ascii_address, "%x", &address);
 
-	  Serial.print("Address:");
+	  Serial.print(F("Address:"));
 	  Serial.println(ascii_address);
-	  Serial.print("Length:");
+	  Serial.print(F("Length:"));
 	  Serial.println(length);
 	  
 	  if ( length == 0 )
@@ -2574,7 +2821,7 @@ void cmd_memory(String cmd)
       signal_scan();
 
       // Allow interaction
-      Serial.print("Working address: ");
+      Serial.print(F("Working address: "));
       Serial.print((unsigned short)working_address, HEX);
 
       Serial.print(" Space:");
@@ -2596,17 +2843,17 @@ void cmd_memory(String cmd)
       Serial.print("");
 
       
-      Serial.print(" Bus state:");
+      Serial.print(F(" Bus state:"));
       Serial.println(bsm_state_name());
 
-      Serial.println(" (r:Display memory  a:Set address  w:write byte  e:Erase flash sector         E:Erase chip)");
-      Serial.println(" (m:Mem space       i:IO space     b:Set bank    X:write example code to 0000 Y:write code to all banks)");
-      Serial.println(" (u:upload bin to flash bank 0)");
-      Serial.println(" (return:next q:quit)");
+      Serial.println(F(" (r:Display memory  a:Set address  w:write byte  e:Erase flash sector         E:Erase chip)"));
+      Serial.println(F(" (m:Mem space       i:IO space     b:Set bank    X:write example code to 0000 Y:write code to all banks)"));
+      Serial.println(F(" (u:upload bin to flash bank 0)"));
+      Serial.println(F(" (return:next q:quit)"));
       
       cmdloop=true;
 
-      Serial.print("memory> "); Serial.flush();
+      Serial.print(F("memory> ")); Serial.flush();
       String memory_cmd = "";
       while( cmdloop )
 	{
@@ -2629,7 +2876,7 @@ void cmd_memory(String cmd)
             {
             case 'u':
               // Upload binary file to flash bank 0
-              Serial.println("Start upload of binary file. Will write to bank 0");
+              Serial.println(F("Start upload of binary file. Will write to bank 0"));
 		  
               upload_to_bank(0);
               break;
@@ -2699,7 +2946,7 @@ void cmd_memory(String cmd)
               flush_serial();
 		  
               // Erase a sector
-              Serial.println("Starting chip erase...");
+              Serial.println(F("Starting chip erase..."));
               flash_erase(FLASH_ERASE_CHIP_CMD, 0x5555);
               Serial.println("done.");
               cmdloop=false;
@@ -2720,7 +2967,7 @@ void cmd_memory(String cmd)
               // Take the example code and write it to all banks of flash 
               for(int b=0; b<16;b++)
                 {
-                  Serial.print("Writing to bank ");
+                  Serial.print(F("Writing to bank "));
                   Serial.println(b);
                   for(int i=0; i<example_code_length; i++)
                     {
@@ -2741,13 +2988,13 @@ void cmd_memory(String cmd)
 
 #if ENABLE_TIMINGS
 		  end = millis();
-		  Serial.print("Elapsed:");
+		  Serial.print(F("Elapsed:"));
 		  Serial.print(end-start);
 		  Serial.println("ms");
 #endif		  
 
             memory_cmd = "";
-            Serial.print("memory> "); Serial.flush();
+            Serial.print(F("memory> ")); Serial.flush();
           }
 	  
 	}
@@ -2773,9 +3020,9 @@ void cmd_reset_z80(String cmd)
 
   reset_z80();
 
-  Serial.println( "\n------------------" );
-  Serial.println( "Z80 has been reset" );
-  Serial.println( "------------------" );
+  Serial.println( F("\n------------------") );
+  Serial.println( F("Z80 has been reset") );
+  Serial.println( F("------------------") );
 }
 
 
