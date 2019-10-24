@@ -9,7 +9,7 @@
 //
 #define ENABLE_MEGA_ROM_EMULATION 0
 #define ENABLE_DIRECT_PORT_ACCESS 1
-#define ENABLE_TIMINGS            1
+#define ENABLE_TIMINGS            0
 
 typedef unsigned char BYTE;
 typedef void (*FPTR)();
@@ -619,6 +619,16 @@ void reset_z80()
 // Do a half t state
 int clk = 0;
 
+#if ENABLE_TIMINGS
+#define NUM_TIMED_CLKS 20
+
+// Variables where we store clock rate timing information
+unsigned long last_clk = 0;
+unsigned long now_clk = 0;
+unsigned long last_clks[NUM_TIMED_CLKS];
+int last_clks_i = 0;
+#endif
+
 void half_t_state()
 {
 
@@ -634,6 +644,13 @@ void half_t_state()
     }
   
   clk = !clk;
+
+#if ENABLE_TIMINGS
+  now_clk = millis();
+  last_clks[last_clks_i++] = now_clk-last_clk;
+  last_clk = now_clk;
+  last_clks_i = last_clks_i % NUM_TIMED_CLKS;
+#endif
 }
 
 // Do a clock cycle or T state (high then low)
@@ -967,6 +984,10 @@ unsigned int addr_state()
 // drive address bus
 void set_addr_state(int address)
 {
+#if ENABLE_DIRECT_PORT_ACCESS
+  PORTA = address & 0xff;
+  PORTB = (address & 0xff00) >> 8;
+#else
   // Set all the address lines
   for(int i=15; i>=0; i--)
     {
@@ -982,6 +1003,7 @@ void set_addr_state(int address)
 	  break;
 	}
     }
+#endif
 }
 
 // Inverts bits in an 8 bit value
@@ -2027,6 +2049,12 @@ void cmd_trace_test_code(String cmd)
   int fast_to_address = -1;
   unsigned int trigger_address = 0x8000;    // trigger when we hit RAm by default
   boolean trigger_on = false;
+
+
+#if ENABLE_TIMINGS
+  unsigned long average = 0;
+  unsigned long t_now = 0, t_last = 0;
+#endif
   
   // We have a logical address space for the array of code such that the code starts at
   // 0000H, which is the reset vector
@@ -2050,6 +2078,7 @@ void cmd_trace_test_code(String cmd)
     {
       // Half t states so we can examine all clock transitions
       half_t_state();
+
       //delay(5);
 
       if( signal_state("M1") == LOW )
@@ -2066,7 +2095,7 @@ void cmd_trace_test_code(String cmd)
 	}
       else
 	{
-	  if( (fast_mode_n % 100)==0 )
+	  if( (fast_mode_n % 1000000)==0 )
 	    {
 	      Serial.println(fast_mode_n);
 	    }
@@ -2162,7 +2191,7 @@ void cmd_trace_test_code(String cmd)
                       fast_to_address = -1;
                     }
                 }
-              else if( (int16_t)z80_registers.PC != fast_to_next_instruction )
+              else if( (int16_t)z80_registers.PC == fast_to_next_instruction,0 )
                 {
                   fast_mode = false;
                   quiet = false;
@@ -2188,6 +2217,9 @@ void cmd_trace_test_code(String cmd)
 	}
       else
 	{
+#if ENABLE_TIMINGS
+	  t_now = millis();
+#endif
 	  // Allow interaction
 	  if ( trigger_on )
 	    {
@@ -2209,6 +2241,13 @@ void cmd_trace_test_code(String cmd)
 	  Serial.println("1:assert reset               0:deassert reset             d:dump regs (coming soon!)");
 	  Serial.println("b:Breakpoint                 B:Toggle breakpoint\n");
 	  Serial.println("return: drive half a clock   q:quit menu");
+
+#if ENABLE_TIMINGS
+	  Serial.print("Elapsed:");
+	  Serial.print(t_now-t_last);
+	  t_last = t_now;
+	  Serial.println("ms");
+#endif
 	  
 	  boolean cmdloop = true;
 	  
@@ -2231,11 +2270,28 @@ void cmd_trace_test_code(String cmd)
                 //Serial.println(trace_cmd);
 
 #if ENABLE_TIMINGS
-	    start = millis();
+		t_last = millis();
 #endif
-
                 switch( trace_cmd.charAt(0) )
                 {
+#if ENABLE_TIMINGS
+		case 'z':
+		  // Display stored timing information
+		  Serial.println("Mega CLK timing");
+		  average = 0;
+		  
+		  for(int i=0; i<NUM_TIMED_CLKS;i++)
+		    {
+		      Serial.print(" ");
+		      Serial.print(last_clks[i]);
+		      average += last_clks[i];
+		    }
+		  Serial.println("");
+		  Serial.print("Average:");
+		  Serial.println(average / NUM_TIMED_CLKS);
+		  
+		  break;
+#endif		  
                 case 't':
                   fast_mode = true;
                   quiet = true;
@@ -2269,7 +2325,8 @@ void cmd_trace_test_code(String cmd)
                   fast_mode = true;
                   fast_mode_n = -1;
                   quiet = true;
-		  cmdloop=false;
+		  delay(100);
+		  cmdloop = false;
                   break;
 
                 case 'b':
@@ -2356,12 +2413,6 @@ void cmd_trace_test_code(String cmd)
                   break;
                 }
 		
-#if ENABLE_TIMINGS
-		end = millis();
-		Serial.print("Elapsed:");
-		Serial.print(end-start);
-		Serial.println("ms");
-#endif		  
                 Serial.print("trace> "); Serial.flush();
                 trace_cmd = "";
               }
