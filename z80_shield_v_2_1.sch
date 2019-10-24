@@ -14771,7 +14771,7 @@ footprint=ajm-arduino-mega-header
 N 72400 50475 72400 52200 4
 {
 T 72300 50750 5 10 1 1 90 0 1
-netname=D6
+netname=D1
 }
 N 76600 47775 76600 49200 4
 N 76600 47775 76225 47775 4
@@ -15512,7 +15512,7 @@ slot=6
 N 73150 50475 73150 52200 4
 {
 T 73075 50825 5 10 1 1 90 0 1
-netname=D2
+netname=D5
 }
 C 73150 52200 1 90 0 EMBEDDEDbusripper-1.sym
 [
@@ -15540,7 +15540,7 @@ device=none
 N 72775 50475 72775 52200 4
 {
 T 72700 50825 5 10 1 1 90 0 1
-netname=D4
+netname=D3
 }
 C 72775 52200 1 90 0 EMBEDDEDbusripper-1.sym
 [
@@ -15632,7 +15632,7 @@ N 75400 34100 75400 32900 4
 N 72400 46275 72350 44900 4
 {
 T 72325 45650 5 10 1 1 90 0 1
-netname=D7
+netname=D0
 }
 C 72350 44900 1 180 0 EMBEDDEDbusripper-1.sym
 [
@@ -15660,7 +15660,7 @@ device=none
 N 72775 46275 72725 44900 4
 {
 T 72725 45600 5 10 1 1 90 0 1
-netname=D5
+netname=D2
 }
 C 72725 44900 1 180 0 EMBEDDEDbusripper-1.sym
 [
@@ -15688,7 +15688,7 @@ device=none
 N 73150 46275 73100 44900 4
 {
 T 73075 45600 5 10 1 1 90 0 1
-netname=D3
+netname=D4
 }
 C 73100 44900 1 180 0 EMBEDDEDbusripper-1.sym
 [
@@ -15716,7 +15716,7 @@ device=none
 N 73525 46275 73475 44900 4
 {
 T 73475 45625 5 10 1 1 90 0 1
-netname=D1
+netname=D6
 }
 C 73475 44900 1 180 0 EMBEDDEDbusripper-1.sym
 [
@@ -15744,7 +15744,7 @@ device=none
 N 73525 50475 73475 52200 4
 {
 T 73425 50950 5 10 1 1 90 0 1
-netname=D0
+netname=D7
 }
 C 73475 52200 1 90 0 EMBEDDEDbusripper-1.sym
 [
