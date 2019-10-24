@@ -1367,15 +1367,15 @@ void dump_z80_registers()
     }
 
 //  Serial.println("\nZ80 Registers (which are known): ");
-  Serial.print("^0PC:");
+  Serial.print(F("^0PC:"));
   Serial.print( to_hex(z80_registers.PC, 4) );
-  Serial.print("$");
-  Serial.print("^0AF:");
+  Serial.print(F("$"));
+  Serial.print(F("^0AF:"));
   Serial.print( to_hex(z80_registers.AF, 4) );
-  Serial.print("$");
-  Serial.print("^0BC:");
+  Serial.print(F("$"));
+  Serial.print(F("^0BC:"));
   Serial.print( to_hex(z80_registers.PC+2, 4) );
-  Serial.print("$");
+  Serial.print(F("$"));
 }
 
 void dump_misc_signals()
@@ -1662,13 +1662,13 @@ void cmd_dump_signals()
   data = data_state();
     
   if( signal_state("M1") == HIGH )
-    Serial.print("Addr:");  
+    Serial.print(F("Addr:"));  
   else
-    Serial.print("PC:");  
+    Serial.print(F("PC:"));  
 
   Serial.print(to_hex(address, 4));
 
-  Serial.print("  Data:");
+  Serial.print(F("  Data:"));
   Serial.print(to_hex(data, 2));
   Serial.println("\n");
   
@@ -2212,9 +2212,9 @@ void cmd_set_example_code(String cmd)
   example_code        = code_list[code_i].code;
   example_code_length = code_list[code_i].length;
   
-  Serial.print("\nExample code now '");
+  Serial.print(F("\nExample code now '"));
   Serial.print(code_list[code_i].desc);
-  Serial.print("  len:");
+  Serial.print(F("  len:"));
   Serial.print(example_code_length);
   Serial.println("'");
 
@@ -2322,7 +2322,7 @@ void cmd_trace_test_code(String cmd)
       // Dump the status so we can see what's happening
       if ( !fast_mode )
 	{
-	  Serial.print("\nBus state:");
+	  Serial.print(F("\nBus state:"));
 	  Serial.println(bsm_state_name());
 
 	  cmd_dump_signals();
@@ -2445,7 +2445,7 @@ void cmd_trace_test_code(String cmd)
 	    {
 	      fast_mode = false;
 	      quiet = false;
-	      Serial.print("Trigger address reached (");
+	      Serial.print(F("Trigger address reached ("));
 	      Serial.print(trigger_address & 0xffff, HEX);
 	      Serial.println(")");
 	    }
@@ -2705,7 +2705,7 @@ void upload_to_bank(int bank)
 	{
 	case 'S':
 	  started = true;
-	  Serial.println("Started");
+	  Serial.println(F("Started"));
 	  break;
 	  
 	case ' ':
@@ -2936,7 +2936,7 @@ void cmd_memory(String cmd)
               // Erase a sector
               delay(100);
 
-              Serial.println("Starting erase...");
+              Serial.println(F("Starting erase..."));
               flash_erase(FLASH_ERASE_SECTOR_CMD, strtol((memory_cmd.c_str())+1, NULL, 16));
               Serial.println("done.");
               cmdloop=false;
@@ -3055,13 +3055,13 @@ void print_commands()
 {
   int i = 0;
   
-  Serial.println( "\nCommand Menu" );
-  Serial.println( "============\n" );
+  Serial.println( F("\nCommand Menu") );
+  Serial.println( F("============\n") );
 
   while( cmdlist[i].desc != "" )
   {
     Serial.print  ( cmdlist[i].cmdname );
-    Serial.print  ( ": " );
+    Serial.print  ( F(": ") );
     Serial.println( cmdlist[i].desc );
     i++;
   }
@@ -3109,9 +3109,9 @@ void run_monitor()
 		  (*(cmdlist[i].handler))(cmd);
 #if ENABLE_TIMINGS
 		  end = millis();
-		  Serial.print("Elapsed:");
+		  Serial.print(F("Elapsed:"));
 		  Serial.print(end-start);
-		  Serial.println("ms");
+		  Serial.println(F("ms"));
 #endif		  
 		  print_commands();
 		  
@@ -3219,12 +3219,12 @@ void setup()
   for(int i=0; i<24; i++ )
     Serial.println("");
     
-  Serial.println("Z80 Shield Monitor");
-  Serial.println("    (Set line ending to carriage return)");
+  Serial.println(F("Z80 Shield Monitor"));
+  Serial.println(F("    (Set line ending to carriage return)"));
 
   // Use the command menu function because it outputs status to the user
   //
-  cmd_grab_z80("initialisation");
+  cmd_grab_z80(F("initialisation"));
 
   print_commands();
 
