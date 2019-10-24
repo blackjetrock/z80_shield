@@ -225,7 +225,7 @@ char *textify_trace_rec(int i)
       break;
     }
   
-  sprintf(trace_rec_buf, "%d: %s %04X %02X", i, type, trace[i].addr, trace[i].data);
+  sprintf(trace_rec_buf, "%02d: %s %04X %02X", i, type, trace[i].addr, trace[i].data);
   return(trace_rec_buf);
 }
 
@@ -2474,7 +2474,7 @@ void cmd_trace_test_code(String cmd)
 	  Serial.println(F("J:Mega take memory map       j:Hardware take memory map\n"));
 	  Serial.println(F("r:reset Z80"));
 	  Serial.println(F("1:assert reset               0:deassert reset             d:dump regs (coming soon!)"));
-	  Serial.println(F("b:Breakpoint                 B:Toggle breakpoint\n"));
+	  Serial.println(F("b:Breakpoint                 B:Toggle breakpoint          -:display trace\n"));
 	  Serial.println(F("return: drive half a clock   q:quit menu"));
 
 #if ENABLE_TIMINGS
