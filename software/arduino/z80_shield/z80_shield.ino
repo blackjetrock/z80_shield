@@ -28,6 +28,9 @@ unsigned int data_state();
 boolean quiet = false;
 boolean fast_mode = false;       // Skip all output and interaction
 
+// Stop if M1 asserted (used for running to next instruction
+boolean stop_on_m1 = false;
+
 // Current example code
 BYTE *example_code;
 int example_code_length;
@@ -447,6 +450,16 @@ void entry_opcode3()
   inst_inst[0] = data_state();
 }
 
+// If we are stopping when M1 asserted then stop
+void entry_opcode1()
+{
+  if ( stop_on_m1 )
+    {
+      fast_mode = false;
+      quiet = false;
+    }
+}
+
 void entry_trc_op()
 {
   // Trace opcode
@@ -472,7 +485,7 @@ const STATE bsm[] =
       STATE_OP1,
       "Opcode 1",
       {
-	entry_null,
+	entry_opcode1,
       },
       {
 	{EV_A_MREQ, STATE_OP2},
@@ -2282,6 +2295,7 @@ void cmd_trace_test_code(String cmd)
   int fast_mode_n = 0;
   int fast_to_next_instruction = -1;
   int fast_to_address = -1;
+
   unsigned int trigger_address = 0x8000;    // trigger when we hit RAm by default
   boolean trigger_on = false;
 
@@ -2545,6 +2559,7 @@ void cmd_trace_test_code(String cmd)
                   quiet = true;
                   delay(100);
                   fast_mode_n = -1;
+		  stop_on_m1 = true;
                   fast_to_next_instruction = z80_registers.PC;
                   cmdloop = false;
                   break;
