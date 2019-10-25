@@ -14,6 +14,6 @@ Errors on V2.0 PCB
 10. AREF not connected on shield
 11. Add free running LED
 12. Remove MAP LEDs
-
+13. Data bus is reversed on port c. Makes it slower to do direct port access
 
 
