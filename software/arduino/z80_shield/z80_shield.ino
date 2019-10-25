@@ -31,6 +31,9 @@ boolean fast_mode = false;       // Skip all output and interaction
 // Stop if M1 asserted (used for running to next instruction
 boolean stop_on_m1 = false;
 
+// Run to this address and stop in fast mode
+int fast_to_address = -1;
+
 // Current example code
 BYTE *example_code;
 int example_code_length;
@@ -455,8 +458,14 @@ void entry_opcode1()
 {
   if ( stop_on_m1 )
     {
-      fast_mode = false;
-      quiet = false;
+      if ( (fast_to_address == -1) || ((fast_to_address != -1) && (fast_to_address == addr_state())) )
+	{
+	  fast_mode = false;
+	  quiet = false;
+
+	  // Turn off stopping on M1, it's always a one-shot
+	  stop_on_m1 = false;
+	}
     }
 }
 
@@ -2293,8 +2302,7 @@ void cmd_trace_test_code(String cmd)
 #endif
   
   int fast_mode_n = 0;
-  int fast_to_next_instruction = -1;
-  int fast_to_address = -1;
+
 
   unsigned int trigger_address = 0x8000;    // trigger when we hit RAm by default
   boolean trigger_on = false;
@@ -2428,9 +2436,11 @@ void cmd_trace_test_code(String cmd)
 
 	  if ( fast_mode_n == -1 )
             {
+	      
               // Casts are to keep the compiler quiet. For the moment the fast_to_address
               // is signed so it can use -1 as a sentinel value
               //
+#if 0
               if( fast_to_address != -1 )
                 {
                   if( (int16_t)z80_registers.PC == fast_to_address )
@@ -2440,11 +2450,7 @@ void cmd_trace_test_code(String cmd)
                       fast_to_address = -1;
                     }
                 }
-              else if( (int16_t)z80_registers.PC == fast_to_next_instruction,0 )
-                {
-                  fast_mode = false;
-                  quiet = false;
-                }
+#endif
 	    }
 
 	  if ( Serial.available()>0 )
@@ -2560,7 +2566,7 @@ void cmd_trace_test_code(String cmd)
                   delay(100);
                   fast_mode_n = -1;
 		  stop_on_m1 = true;
-                  fast_to_next_instruction = z80_registers.PC;
+		  fast_to_address = -1;
                   cmdloop = false;
                   break;
 
@@ -2569,6 +2575,7 @@ void cmd_trace_test_code(String cmd)
                   quiet = true;
                   delay(100);
                   fast_mode_n = -1;
+		  stop_on_m1 = true;
                   fast_to_address = strtol((trace_cmd.c_str())+1, NULL, 16);
                   cmdloop = false;
                   break;
@@ -2666,7 +2673,15 @@ void cmd_trace_test_code(String cmd)
 		  Serial.println(F("Trace"));
 		  for(int i=0; i<TRACE_SIZE;i++)
 		    {
-		      Serial.println(textify_trace_rec(i));
+		      Serial.print(textify_trace_rec(i));
+		      if ( i == trace_index )
+			{
+			  Serial.println("  <- oldest");
+			}
+		      else
+			{
+			  Serial.println("");
+			}
 		    }
 		  break;
 		  
