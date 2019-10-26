@@ -2,6 +2,7 @@
 // Arduino Mega sketch for the Z80 shield
 // Serial monitor based control program
 //
+
 #include <string.h>
 
 // If you enable this, the Mega will supply data from its own internal buffer when the Z80
@@ -11,7 +12,7 @@
 #define ENABLE_MEGA_ROM_EMULATION   0
 #define ENABLE_DIRECT_PORT_ACCESS   1
 #define ENABLE_TIMINGS              0
-#define TRACE_SIZE                 20
+#define TRACE_SIZE                 40
 
 typedef unsigned char BYTE;
 typedef void (*FPTR)();
@@ -31,13 +32,35 @@ boolean fast_mode = false;       // Skip all output and interaction
 // Stop if M1 asserted (used for running to next instruction
 boolean stop_on_m1 = false;
 
+// Array that tells us how long an instrcution is, for every opcode
+// Used in inter instruction code execution
+// Not array of struct so it stays in flash
+
+const BYTE instruction_length[] =
+  {
+    0xf5, 1,
+    0xf1, 1,
+    0xe5, 1,
+    0xe1, 1,
+    0x18, 2,    // JR x
+    0x00, 1     // Both NOP and end of table
+  };
+
+
+
+// Inserting code between instructions
+boolean inter_inst = false;
+BYTE *inter_inst_code = NULL;
+unsigned int inter_inst_index = 0;
+unsigned int inter_inst_code_length = 0;
+unsigned int inter_inst_em_count = 0;
+
 // Run to this address and stop in fast mode
 int fast_to_address = -1;
 
 // Current example code
 BYTE *example_code;
 int example_code_length;
-
 
 #define VERTICAL_LABELS  0
 
@@ -177,14 +200,14 @@ enum
 
 // Tracing
 typedef enum
-{
-  TRT_INVALID,
-  TRT_MEM_RD,
-  TRT_MEM_WR,
-  TRT_IO_RD,
-  TRT_IO_WR,
-  TRT_OP_RD,    // Opcode fetch
-} TRACE_REC_TYPE;
+  {
+    TRT_INVALID,
+    TRT_MEM_RD,
+    TRT_MEM_WR,
+    TRT_IO_RD,
+    TRT_IO_WR,
+    TRT_OP_RD,    // Opcode fetch
+  } TRACE_REC_TYPE;
 
 typedef struct
 {
@@ -200,9 +223,11 @@ int trace_index = 0;
 TRACE_REC trace[TRACE_SIZE];
 
 char trace_rec_buf[40];
+
 char *textify_trace_rec(int i)
 {
   char type[20];
+
   
   switch(trace[i].type)
     {
@@ -287,46 +312,47 @@ struct
   const int     assert_ev;   // Assert event
   const int     deassert_ev; // Deassert event
 }
+  
 // The order in this list defines the order in which events will be raised, which affects how th e
 // bus state machine will be laid out.
 //
   signal_list[] =
-  {
-    {  "BUSREQ", "Mega --> Z80",    "     - Asserted, means Mega is controlling the Z80's buses",
-       BUSREQ_Pin, 0, {{MODE_SLAVE, OUTPUT, HIGH},{MODE_MEGA_MASTER, OUTPUT, LOW }}, EV_A_BUSREQ, EV_D_BUSREQ},
-    {  "BUSACK", "Z80  --> Mega",   "    - Asserted, means Z80 acknowledges it's not in control of its buses",
-       BUSACK_Pin, 0, {{MODE_SLAVE, INPUT,  HIGH},{MODE_MEGA_MASTER, INPUT,  HIGH}},  EV_A_BUSACK, EV_D_BUSACK},
-    {  "    M1", "Z80  --> Mega",   "    - Asserted, means Z80 is doing an opcode fetch cycle",
-       M1_Pin,     0, {{MODE_SLAVE, INPUT,  HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}},  EV_A_M1, EV_D_M1},
-    {  "  MREQ", "Z80  --> Mega",   "    - Asserted, means address bus holds a memory address for a read or write",
-       MREQ_Pin,   0, {{MODE_SLAVE, INPUT,  HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}},  EV_A_MREQ, EV_D_MREQ},
-    {  " IOREQ", "Z80  --> Mega",   "    - Asserted, means lower half of address bus holds an IO address for a read or write",
-       IOREQ_Pin,  0, {{MODE_SLAVE, INPUT,  HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}},  EV_A_IOREQ, EV_D_IOREQ},
-    {  "    WR", "Z80  --> Mega",   "    - Asserted, means the data bus holds a value to be written",
-       WR_Pin,     0, {{MODE_SLAVE, INPUT,  HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}},  EV_A_WR, EV_D_WR},
-    {  "    RD", "Z80  --> Mega",   "    - Asserted, means the Z80 wants to read data from external device",
-       RD_Pin,     0, {{MODE_SLAVE, INPUT,  HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}},  EV_A_RD, EV_D_RD},
-    {  "  RFSH", "Z80  --> Mega",   "    - Asserted, means Z80 is in refresh state",
-       RFSH_Pin,   0, {{MODE_SLAVE, INPUT,  HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}},  EV_A_RFSH, EV_D_RFSH},
-    {  "   NMI", "Mega --> Z80",    "     - Asserted, means a non maskable interrupt is being sent to the Z80",
-       NMI_Pin,    0, {{MODE_SLAVE, OUTPUT, HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}}, EV_A_NMI, EV_D_NMI},
-    {  "   INT", "Mega --> Z80",    "     - Asserted, means a maskable interrupt is being sent to the Z80",
-       INT_Pin,    0, {{MODE_SLAVE, OUTPUT, HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}}, EV_A_INT, EV_D_INT},
-    {  "  WAIT", "Mega --> Z80",    "",
-       WAIT_Pin,   0, {{MODE_SLAVE, OUTPUT, HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}}, EV_A_WAIT, EV_D_WAIT},
-    {  "   CLK", "Mega --> Z80",    "     - Asserted, means Z80 is in the second half of a T-state",
-       A_CLK_Pin,  0, {{MODE_SLAVE, OUTPUT, HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}}, EV_A_CLK, EV_D_CLK},
-    {  "   RES", "Mega --> Z80",    "     - Asserted, means the Z80 is being held in reset state",
-       A_RES_Pin,  0, {{MODE_SLAVE, OUTPUT, HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}}, EV_A_RES, EV_D_RES},
-    {  "MAPRQM", "Mega --> Shield", "  - Mega is not providing memory (Flash and RAM) contents (real hardware is mapped)",
-       MAPRQM_Pin, 0, {{MODE_SLAVE, OUTPUT, HIGH},{MODE_MEGA_MASTER, OUTPUT, LOW }}, EV_A_MAPRQM, EV_D_MAPRQM},
-    {  "MAPRQI", "Mega --> Shield", "  - Mega is not providing IO (GPIO, CTC) contents (real hardware is mapped)",
-       MAPRQI_Pin, 0, {{MODE_SLAVE, OUTPUT, LOW },{MODE_MEGA_MASTER, OUTPUT, LOW }},  EV_A_MAPRQI, EV_D_MAPRQI},
-    {  "    X1", "Z80  --> Mega",   "    - Asserted, means Z80 is doing an opcode fetch cycle",
-       M1_Pin,     0, {{MODE_SLAVE, INPUT,  HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}},  EV_A_M1, EV_D_M1},
-    {  "---",    "",                "",
-       0,          0, {{MODE_SLAVE, INPUT,  HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}},  0, 0},
-  };
+    {
+      {  "BUSREQ", "Mega --> Z80",    "     - Asserted, means Mega is controlling the Z80's buses",
+	 BUSREQ_Pin, 0, {{MODE_SLAVE, OUTPUT, HIGH},{MODE_MEGA_MASTER, OUTPUT, LOW }}, EV_A_BUSREQ, EV_D_BUSREQ},
+      {  "BUSACK", "Z80  --> Mega",   "    - Asserted, means Z80 acknowledges it's not in control of its buses",
+	 BUSACK_Pin, 0, {{MODE_SLAVE, INPUT,  HIGH},{MODE_MEGA_MASTER, INPUT,  HIGH}},  EV_A_BUSACK, EV_D_BUSACK},
+      {  "    M1", "Z80  --> Mega",   "    - Asserted, means Z80 is doing an opcode fetch cycle",
+	 M1_Pin,     0, {{MODE_SLAVE, INPUT,  HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}},  EV_A_M1, EV_D_M1},
+      {  "  MREQ", "Z80  --> Mega",   "    - Asserted, means address bus holds a memory address for a read or write",
+	 MREQ_Pin,   0, {{MODE_SLAVE, INPUT,  HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}},  EV_A_MREQ, EV_D_MREQ},
+      {  " IOREQ", "Z80  --> Mega",   "    - Asserted, means lower half of address bus holds an IO address for a read or write",
+	 IOREQ_Pin,  0, {{MODE_SLAVE, INPUT,  HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}},  EV_A_IOREQ, EV_D_IOREQ},
+      {  "    WR", "Z80  --> Mega",   "    - Asserted, means the data bus holds a value to be written",
+	 WR_Pin,     0, {{MODE_SLAVE, INPUT,  HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}},  EV_A_WR, EV_D_WR},
+      {  "    RD", "Z80  --> Mega",   "    - Asserted, means the Z80 wants to read data from external device",
+	 RD_Pin,     0, {{MODE_SLAVE, INPUT,  HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}},  EV_A_RD, EV_D_RD},
+      {  "  RFSH", "Z80  --> Mega",   "    - Asserted, means Z80 is in refresh state",
+	 RFSH_Pin,   0, {{MODE_SLAVE, INPUT,  HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}},  EV_A_RFSH, EV_D_RFSH},
+      {  "   NMI", "Mega --> Z80",    "     - Asserted, means a non maskable interrupt is being sent to the Z80",
+	 NMI_Pin,    0, {{MODE_SLAVE, OUTPUT, HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}}, EV_A_NMI, EV_D_NMI},
+      {  "   INT", "Mega --> Z80",    "     - Asserted, means a maskable interrupt is being sent to the Z80",
+	 INT_Pin,    0, {{MODE_SLAVE, OUTPUT, HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}}, EV_A_INT, EV_D_INT},
+      {  "  WAIT", "Mega --> Z80",    "",
+	 WAIT_Pin,   0, {{MODE_SLAVE, OUTPUT, HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}}, EV_A_WAIT, EV_D_WAIT},
+      {  "   CLK", "Mega --> Z80",    "     - Asserted, means Z80 is in the second half of a T-state",
+	 A_CLK_Pin,  0, {{MODE_SLAVE, OUTPUT, HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}}, EV_A_CLK, EV_D_CLK},
+      {  "   RES", "Mega --> Z80",    "     - Asserted, means the Z80 is being held in reset state",
+	 A_RES_Pin,  0, {{MODE_SLAVE, OUTPUT, HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}}, EV_A_RES, EV_D_RES},
+      {  "MAPRQM", "Mega --> Shield", "  - Mega is not providing memory (Flash and RAM) contents (real hardware is mapped)",
+	 MAPRQM_Pin, 0, {{MODE_SLAVE, OUTPUT, HIGH},{MODE_MEGA_MASTER, OUTPUT, LOW }}, EV_A_MAPRQM, EV_D_MAPRQM},
+      {  "MAPRQI", "Mega --> Shield", "  - Mega is not providing IO (GPIO, CTC) contents (real hardware is mapped)",
+	 MAPRQI_Pin, 0, {{MODE_SLAVE, OUTPUT, LOW },{MODE_MEGA_MASTER, OUTPUT, LOW }},  EV_A_MAPRQI, EV_D_MAPRQI},
+      {  "    X1", "Z80  --> Mega",   "    - Asserted, means Z80 is doing an opcode fetch cycle",
+	 M1_Pin,     0, {{MODE_SLAVE, INPUT,  HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}},  EV_A_M1, EV_D_M1},
+      {  "---",    "",                "",
+	 0,          0, {{MODE_SLAVE, INPUT,  HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}},  0, 0},
+    };
 
 // Indices for signals
 enum
@@ -521,7 +547,7 @@ const STATE bsm[] =
       "Opcode Read",
       {
 	// same as a memory access
-	entry_mem_rd,
+	entry_op_rd,
 	entry_trc_op,
       },
       {
@@ -722,7 +748,7 @@ void entry_null()
 void entry_mem1()
 {
   
-  // If the address is in the range of the RAM chip then we enableit.
+  // If the address is in the range of the RAM chip then we enable it.
   // This is because the Mega doesn't really have enough memory to emulate the RAM, so we use the real chip
   if ( addr_state() >= 0x8000 )
     {
@@ -744,31 +770,121 @@ void entry_mem1()
 	}
     }
 
-    // If it's a flash access then we will drive data if WR is asserted
+  // If it's a flash access then we will drive data if WR is asserted
+}
+
+unsigned int get_instruction_length(BYTE opcode)
+{
+  int i;
+  
+  if( opcode ==0 )
+    {
+      return(1);
+    }
+  
+  for(i=0; instruction_length[i*2] != 0; i++)
+    {
+      if( instruction_length[i*2] == opcode )
+	{
+	  return(instruction_length[i*2+1]);
+	}
+    }
+  
+  // Default to one byte
+  return(1);
+}
+
+void entry_core_ii_emulate()
+{
+  Serial.print("II:");
+  Serial.println(inter_inst_em_count);
+  
+  if ( inter_inst_index >= inter_inst_code_length )
+    {
+      // End of inter inst code
+      fast_mode = false;
+      inter_inst = false;
+      quiet = false;
+      return;
+    }
+  
+  inter_inst_em_count--;
+  
+  // We get data from our emulated code whatever the address
+  // Emulate flash
+  // Disable hardware so we can drive the bus
+  digitalWrite(MAPRQM_Pin, HIGH);
+
+  data_bus_outputs();
+      
+  set_data_state(inter_inst_code[inter_inst_index]);
+  
+  
+  Serial.print(F("Putting ii data on bus "));
+  Serial.print(addr_state(), HEX);
+  Serial.print(" ");
+  Serial.print(data_state(), HEX);
+  Serial.print(inter_inst_code[inter_inst_index], HEX);
+
+  inter_inst_index++;
 }
 
 // Memory read cycle
 void entry_mem_rd()
 {
+  // Instruction data bytes  come rom flash (or perhaps emulated by mega unless we are inserting code between instructions
+  // then we get code from the inter_inst array until it runs out
+   // have we stopped emulating the instruction?
+  if( inter_inst_em_count == 0 )
+    {
+      // Enable hardware so it can drive the bus
+      digitalWrite(MAPRQM_Pin, LOW);
+      
+      data_bus_inputs();
+    }
+  else
+    {
+      if ( inter_inst && (inter_inst_code != NULL) && (inter_inst_em_count > 0) )
+	{
+	  entry_core_ii_emulate();
+	  
+	}
+    }
+
 #if ENABLE_MEGA_ROM_EMULATION
   // We get data from our emulated flash.
   if ( addr_state() < 0x8000 )
     {
       // Emulate flash
+      // Disable hardware so we can drive the bus
+      digitalWrite(MAPRQM_Pin, HIGH);
       data_bus_outputs();
       
       set_data_state(example_code[addr_state()]);
 
-      if ( !fast_mode )
-	{
-	  Serial.print(F("Putting data on bus "));
-	  Serial.print(addr_state(), HEX);
-	  Serial.print(" ");
-	  Serial.print(example_code[addr_state()], HEX);
-	}
+      Serial.print(F("Putting ii data on bus "));
+      Serial.print(addr_state(), HEX);
+      Serial.print(" ");
+      Serial.print(example_code[addr_state()], HEX);
+
     }
 #endif
 }
+
+// Memory read cycle
+void entry_op_rd()
+{
+  // Opcodes come rom flash (or perhaps emulated by mega unless we are inserting code between instructions
+  // then we get code from the inter_inst array until it runs out
+  if ( inter_inst && (inter_inst_code != NULL) )
+    {
+      // Find out how many opcode bytes to emulate after this one
+      inter_inst_em_count = get_instruction_length(inter_inst_code[inter_inst_index]);
+      entry_core_ii_emulate();
+      
+    }
+}
+
 
 void entry_trc_mem_rd()
 {
@@ -799,6 +915,10 @@ void entry_trc_io_wr()
 void entry_mem_rd_end()
 {
   // release the data bus, either if we have driven it or the RAM/flash chip has, it makes no difference
+
+  // Enable the memory hardware again
+  digitalWrite(MAPRQM_Pin, LOW);
+
   data_bus_inputs();
 }
 
@@ -861,9 +981,9 @@ void reset_z80()
 
   // The Z80 user manual says we need 3 full clock for the reset to complete
   for( int i=0; i<3; i++ )
-  {
-    t_state();
-  }
+    {
+      t_state();
+    }
 
   // Release reset
   deassert_signal(SIG_RES);
@@ -1093,7 +1213,7 @@ void write_cycle(int address, BYTE data, int signal)
   deassert_signal(signal);
 
   t_state();
-// Couple of extra clocks 
+  // Couple of extra clocks 
   t_state();
   t_state();
   
@@ -1267,14 +1387,14 @@ unsigned int invert_byte(unsigned int x)
 {
 #define BIT(X, BITNUM, NEWBITNUM)  (((X & (1<<BITNUM)) >> BITNUM) << NEWBITNUM)
 
-return( BIT(x,0,7)+
-	BIT(x,1,6)+
-	BIT(x,2,5)+
-	BIT(x,3,4)+
-	BIT(x,4,3)+
-	BIT(x,5,2)+
-	BIT(x,6,1)+
-	BIT(x,7,0));
+  return( BIT(x,0,7)+
+	  BIT(x,1,6)+
+	  BIT(x,2,5)+
+	  BIT(x,3,4)+
+	  BIT(x,4,3)+
+	  BIT(x,5,2)+
+	  BIT(x,6,1)+
+	  BIT(x,7,0));
 }
 
 // Returns data bus state, ie data on bus
@@ -1388,7 +1508,7 @@ void dump_z80_registers()
       return;
     }
 
-//  Serial.println("\nZ80 Registers (which are known): ");
+  //  Serial.println("\nZ80 Registers (which are known): ");
   Serial.print(F("^0PC:"));
   Serial.print( to_hex(z80_registers.PC, 4) );
   Serial.print(F("$"));
@@ -1471,9 +1591,9 @@ void dump_misc_signals()
 	  Serial.print(signal_list[i].description+")");
 
 	  if( val == LOW )
-	  {
-	    Serial.print(signal_list[i].assertion_note);
-	  }
+	    {
+	      Serial.print(signal_list[i].assertion_note);
+	    }
 	  Serial.println("");
 	}
     }
@@ -1739,92 +1859,92 @@ const BYTE example_code_lcd_bl_off[] =
 // Turns backlight off
 const BYTE example_code_lcd_bl_flash[] =
   {
-                    0x31,  0x00,  0x90,  //   0000 : 			LD SP, 9000H 
-                           0x0e,  0x83,  //   0003 : 			LD   C, IO_ADDR_PIO1_BC 
-                           0x16,  0x81,  //   0005 : 			LD   D, IO_ADDR_PIO1_BD 
-                           0x26,  0xfb,  //   0007 : 			LD   H, 0FBH 
-                           0x2e,  0x00,  //   0009 : 			LD   L, 00H 
-                    0xcd,  0x3f,  0x00,  //   000b : 			CALL PIOINIT 
-                           0x0e,  0x83,  //   000e : 			LD   C, IO_ADDR_PIO1_BC 
-                           0x16,  0x81,  //   0010 : 			LD   D, IO_ADDR_PIO1_BD 
-                           0x26,  0xff,  //   0012 : 			LD   H, 0FFH 
-                           0x2e,  0x00,  //   0014 : 			LD   L, 00H 
-                    0xcd,  0x3f,  0x00,  //   0016 : 			CALL PIOINIT 
-                           0x0e,  0x83,  //   0019 : 			LD C, IO_ADDR_PIO1_BC 
-                           0x3e,  0xcf,  //   001b : 			LD A, 0CFH 
-                           0xed,  0x79,  //   001d : 			OUT (C),A 
-                           0x0e,  0x83,  //   001f : 			LD C, IO_ADDR_PIO1_BC 
-                           0x3e,  0xfb,  //   0021 : 			LD A, 0FBH 
-                           0xed,  0x79,  //   0023 : 			OUT (C),A 
-                           0x0e,  0x81,  //   0025 : 			LD C, IO_ADDR_PIO1_BD 
-                           0x3e,  0x00,  //   0027 : 			LD A, 00H 
-                           0xed,  0x79,  //   0029 : 			OUT (C),A 
-                           0x0e,  0x83,  //   002b : 			LD C, IO_ADDR_PIO1_BC 
-                           0x3e,  0xcf,  //   002d : 			LD A, 0CFH 
-                           0xed,  0x79,  //   002f : 			OUT (C),A 
-                           0x0e,  0x83,  //   0031 : 			LD C, IO_ADDR_PIO1_BC 
-                           0x3e,  0xff,  //   0033 : 			LD A, 0FFH 
-                           0xed,  0x79,  //   0035 : 			OUT (C),A 
-                           0x0e,  0x81,  //   0037 : 			LD C, IO_ADDR_PIO1_BD 
-                           0x3e,  0x00,  //   0039 : 			LD A, 00H 
-                           0xed,  0x79,  //   003b : 			OUT (C),A 
-                           0x18,  0xc4,  //   003d : 			JR START 
-                           0x3e,  0xcf,  //   003f : 			LD A, 0CFH 
-                           0xed,  0x79,  //   0041 : 			OUT (C), A 
-                                  0x7c,  //   0043 : 				LD A, H 
-                           0xed,  0x79,  //   0044 : 			OUT (C), A 
-                                  0x7d,  //   0046 : 				LD A, L 
-                                  0x4a,  //   0047 : 				LD C, D 
-                           0xed,  0x79,  //   0048 : 			OUT (C), A 
-                                  0xc9,  //   004a : 				RET
+    0x31,  0x00,  0x90,  //   0000 : 			LD SP, 9000H 
+    0x0e,  0x83,  //   0003 : 			LD   C, IO_ADDR_PIO1_BC 
+    0x16,  0x81,  //   0005 : 			LD   D, IO_ADDR_PIO1_BD 
+    0x26,  0xfb,  //   0007 : 			LD   H, 0FBH 
+    0x2e,  0x00,  //   0009 : 			LD   L, 00H 
+    0xcd,  0x3f,  0x00,  //   000b : 			CALL PIOINIT 
+    0x0e,  0x83,  //   000e : 			LD   C, IO_ADDR_PIO1_BC 
+    0x16,  0x81,  //   0010 : 			LD   D, IO_ADDR_PIO1_BD 
+    0x26,  0xff,  //   0012 : 			LD   H, 0FFH 
+    0x2e,  0x00,  //   0014 : 			LD   L, 00H 
+    0xcd,  0x3f,  0x00,  //   0016 : 			CALL PIOINIT 
+    0x0e,  0x83,  //   0019 : 			LD C, IO_ADDR_PIO1_BC 
+    0x3e,  0xcf,  //   001b : 			LD A, 0CFH 
+    0xed,  0x79,  //   001d : 			OUT (C),A 
+    0x0e,  0x83,  //   001f : 			LD C, IO_ADDR_PIO1_BC 
+    0x3e,  0xfb,  //   0021 : 			LD A, 0FBH 
+    0xed,  0x79,  //   0023 : 			OUT (C),A 
+    0x0e,  0x81,  //   0025 : 			LD C, IO_ADDR_PIO1_BD 
+    0x3e,  0x00,  //   0027 : 			LD A, 00H 
+    0xed,  0x79,  //   0029 : 			OUT (C),A 
+    0x0e,  0x83,  //   002b : 			LD C, IO_ADDR_PIO1_BC 
+    0x3e,  0xcf,  //   002d : 			LD A, 0CFH 
+    0xed,  0x79,  //   002f : 			OUT (C),A 
+    0x0e,  0x83,  //   0031 : 			LD C, IO_ADDR_PIO1_BC 
+    0x3e,  0xff,  //   0033 : 			LD A, 0FFH 
+    0xed,  0x79,  //   0035 : 			OUT (C),A 
+    0x0e,  0x81,  //   0037 : 			LD C, IO_ADDR_PIO1_BD 
+    0x3e,  0x00,  //   0039 : 			LD A, 00H 
+    0xed,  0x79,  //   003b : 			OUT (C),A 
+    0x18,  0xc4,  //   003d : 			JR START 
+    0x3e,  0xcf,  //   003f : 			LD A, 0CFH 
+    0xed,  0x79,  //   0041 : 			OUT (C), A 
+    0x7c,  //   0043 : 				LD A, H 
+    0xed,  0x79,  //   0044 : 			OUT (C), A 
+    0x7d,  //   0046 : 				LD A, L 
+    0x4a,  //   0047 : 				LD C, D 
+    0xed,  0x79,  //   0048 : 			OUT (C), A 
+    0xc9,  //   004a : 				RET
   };
 
 const BYTE example_code_lcd_slow_flash[] =
   {
-                                         //   0000 : IO_ADDR_PIO0:   EQU   80H   
-                                         //   0000 : IO_ADDR_PIO0_AD:   EQU   IO_ADDR_PIO0+0   
-                                         //   0000 : IO_ADDR_PIO0_BD:   EQU   IO_ADDR_PIO0+1   
-                                         //   0000 : IO_ADDR_PIO0_AC:   EQU   IO_ADDR_PIO0+2   
-                                         //   0000 : IO_ADDR_PIO0_BC:   EQU   IO_ADDR_PIO0+3   
-                                         //   0000 : IO_ADDR_PIO1:   EQU   80H   
-                                         //   0000 : IO_ADDR_PIO1_AD:   EQU   IO_ADDR_PIO1+0   
-                                         //   0000 : IO_ADDR_PIO1_BD:   EQU   IO_ADDR_PIO1+1   
-                                         //   0000 : IO_ADDR_PIO1_AC:   EQU   IO_ADDR_PIO1+2   
-                                         //   0000 : IO_ADDR_PIO1_BC:   EQU   IO_ADDR_PIO1+3   
-                                         //   0000 : .ORG   0   
-                    0x31,  0x00,  0x90,  //   0000 : LD   SP,9000H   
-                                         //   0003 : ; 
-                           0x0E,  0x83,  //   0003 : START:    LD   C,IO_ADDR_PIO1_BC   
-                           0x3E,  0xCF,  //   0005 : LD   A,0CFH   
-                           0xED,  0x79,  //   0007 : OUT   (C),A   
-                           0x0E,  0x83,  //   0009 : LD   C,IO_ADDR_PIO1_BC   
-                           0x3E,  0xFB,  //   000B : LD   A,0FBH   
-                           0xED,  0x79,  //   000D : OUT   (C),A   
-                           0x0E,  0x83,  //   000F : LD   C,IO_ADDR_PIO1_BC   
-                           0x3E,  0x00,  //   0011 : LD   A,00H   
-                           0xED,  0x79,  //   0013 : OUT   (C),A   
-                    0xCD,  0x2F,  0x00,  //   0015 : CALL   DELAY   
-                                         //   0018 : ; 
-                           0x0E,  0x83,  //   0018 : LD   C,IO_ADDR_PIO1_BC   
-                           0x3E,  0xCF,  //   001A : LD   A,0CFH   
-                           0xED,  0x79,  //   001C : OUT   (C),A   
-                           0x0E,  0x83,  //   001E : LD   C,IO_ADDR_PIO1_BC   
-                           0x3E,  0xFF,  //   0020 : LD   A,0FFH   
-                           0xED,  0x79,  //   0022 : OUT   (C),A   
-                           0x0E,  0x83,  //   0024 : LD   C,IO_ADDR_PIO1_BC   
-                           0x3E,  0x00,  //   0026 : LD   A,00H   
-                           0xED,  0x79,  //   0028 : OUT   (C),A   
-                    0xCD,  0x2F,  0x00,  //   002A : CALL   DELAY   
-                                         //   002D : ; 
-                           0x18,  0xD4,  //   002D : JR   START   
-                           0x26,  0xFF,  //   002F : DELAY:    LD   H,0FFH   
-                                         //   0031 : ; 
-                           0x2E,  0x2F,  //   0031 : LOOPH:    LD   L,0FFH   
-                                  0x2D,  //   0033 : LOOPL:    DEC   L   
-                           0x20,  0xFD,  //   0034 : JR   NZ,LOOPL   
-                           0x25,         //   0036 : H   
-                           0x20,  0xF8,  //   0037 : JR   NZ,LOOPH   
-                                  0xC9,  //   0039 : RET      
+    //   0000 : IO_ADDR_PIO0:   EQU   80H   
+    //   0000 : IO_ADDR_PIO0_AD:   EQU   IO_ADDR_PIO0+0   
+    //   0000 : IO_ADDR_PIO0_BD:   EQU   IO_ADDR_PIO0+1   
+    //   0000 : IO_ADDR_PIO0_AC:   EQU   IO_ADDR_PIO0+2   
+    //   0000 : IO_ADDR_PIO0_BC:   EQU   IO_ADDR_PIO0+3   
+    //   0000 : IO_ADDR_PIO1:   EQU   80H   
+    //   0000 : IO_ADDR_PIO1_AD:   EQU   IO_ADDR_PIO1+0   
+    //   0000 : IO_ADDR_PIO1_BD:   EQU   IO_ADDR_PIO1+1   
+    //   0000 : IO_ADDR_PIO1_AC:   EQU   IO_ADDR_PIO1+2   
+    //   0000 : IO_ADDR_PIO1_BC:   EQU   IO_ADDR_PIO1+3   
+    //   0000 : .ORG   0   
+    0x31,  0x00,  0x90,  //   0000 : LD   SP,9000H   
+    //   0003 : ; 
+    0x0E,  0x83,  //   0003 : START:    LD   C,IO_ADDR_PIO1_BC   
+    0x3E,  0xCF,  //   0005 : LD   A,0CFH   
+    0xED,  0x79,  //   0007 : OUT   (C),A   
+    0x0E,  0x83,  //   0009 : LD   C,IO_ADDR_PIO1_BC   
+    0x3E,  0xFB,  //   000B : LD   A,0FBH   
+    0xED,  0x79,  //   000D : OUT   (C),A   
+    0x0E,  0x83,  //   000F : LD   C,IO_ADDR_PIO1_BC   
+    0x3E,  0x00,  //   0011 : LD   A,00H   
+    0xED,  0x79,  //   0013 : OUT   (C),A   
+    0xCD,  0x2F,  0x00,  //   0015 : CALL   DELAY   
+    //   0018 : ; 
+    0x0E,  0x83,  //   0018 : LD   C,IO_ADDR_PIO1_BC   
+    0x3E,  0xCF,  //   001A : LD   A,0CFH   
+    0xED,  0x79,  //   001C : OUT   (C),A   
+    0x0E,  0x83,  //   001E : LD   C,IO_ADDR_PIO1_BC   
+    0x3E,  0xFF,  //   0020 : LD   A,0FFH   
+    0xED,  0x79,  //   0022 : OUT   (C),A   
+    0x0E,  0x83,  //   0024 : LD   C,IO_ADDR_PIO1_BC   
+    0x3E,  0x00,  //   0026 : LD   A,00H   
+    0xED,  0x79,  //   0028 : OUT   (C),A   
+    0xCD,  0x2F,  0x00,  //   002A : CALL   DELAY   
+    //   002D : ; 
+    0x18,  0xD4,  //   002D : JR   START   
+    0x26,  0xFF,  //   002F : DELAY:    LD   H,0FFH   
+    //   0031 : ; 
+    0x2E,  0x2F,  //   0031 : LOOPH:    LD   L,0FFH   
+    0x2D,  //   0033 : LOOPL:    DEC   L   
+    0x20,  0xFD,  //   0034 : JR   NZ,LOOPL   
+    0x25,         //   0036 : H   
+    0x20,  0xF8,  //   0037 : JR   NZ,LOOPH   
+    0xC9,  //   0039 : RET      
   };
 
 // Writes some code to RAM then jumps to it
@@ -1863,340 +1983,17 @@ const BYTE example_code_bank[] =
 
 const BYTE example_code_lcd_test[] =
   {
-                    0x31,  0x00,  0x90,  //   0000 : 		START:	LD  SP, 9000H 
-                           0x0e,  0x82,  //   0003 : 			LD   C, IO_ADDR_PIO1_AC 
-                           0x16,  0x80,  //   0005 : 			LD   D, IO_ADDR_PIO1_AD 
-                           0x26,  0x0f,  //   0007 : 			LD   H, 0FH 
-                           0x2e,  0x00,  //   0009 : 			LD   L, 00H 
-                    0xcd,  0x80,  0x01,  //   000b : 			CALL PIOINIT 
-                           0x0e,  0x83,  //   000e : 			LD   C, IO_ADDR_PIO1_BC 
-                           0x16,  0x81,  //   0010 : 			LD   D, IO_ADDR_PIO1_BD 
-                           0x26,  0xfc,  //   0012 : 			LD   H, 0FCH 
-                           0x2e,  0x00,  //   0014 : 			LD   L, 00H 
-                    0xcd,  0x80,  0x01,  //   0016 : 			CALL PIOINIT 
-                           0x0e,  0x02,  //   0019 : 			LD   C, IO_ADDR_PIO0_AC 
-                           0x16,  0x00,  //   001b : 			LD   D, IO_ADDR_PIO0_AD 
-                           0x26,  0xf8,  //   001d : 			LD   H, 0F8H 
-                           0x2e,  0x01,  //   001f : 			LD   L, AD_CS 
-                    0xcd,  0x80,  0x01,  //   0021 : 			CALL PIOINIT 
-                           0x3e,  0x01,  //   0024 : 			LD   A, AD_CS 
-                    0x32,  0x02,  0xa0,  //   0026 : 			LD   (SHADOW_AD), A 
-                           0x3e,  0x00,  //   0029 : 			LD   A, 0 
-                    0x32,  0x00,  0xa0,  //   002b : 			LD   (SHADOW_A), A 
-                           0x3e,  0x00,  //   002e : 			LD   A, 0 
-                    0x32,  0x01,  0xa0,  //   0030 : 			LD   (SHADOW_B), A 
-                    0xcd,  0x8c,  0x01,  //   0033 : 			CALL RS_LOW 
-                    0xcd,  0xac,  0x01,  //   0036 : 			CALL E_LOW 
-                    0xcd,  0x75,  0x01,  //   0039 : 		      	CALL DELAY		; 
-                           0x16,  0x03,  //   003c : 			LD   D, 03H 
-                    0xcd,  0x16,  0x02,  //   003e : 			CALL SDATA4 
-                    0xcd,  0x75,  0x01,  //   0041 : 		     	CALL DELAY 
-                           0x16,  0x03,  //   0044 : 			LD   D, 03H 
-                    0xcd,  0x16,  0x02,  //   0046 : 			CALL SDATA4 
-                    0xcd,  0x75,  0x01,  //   0049 : 		     	CALL DELAY 
-                           0x16,  0x03,  //   004c : 		       LD   D, 03H 
-                    0xcd,  0x16,  0x02,  //   004e : 			CALL SDATA4 
-                    0xcd,  0x75,  0x01,  //   0051 : 		     	CALL DELAY 
-                           0x16,  0x02,  //   0054 : 		       	LD   D, 02H 
-                    0xcd,  0x16,  0x02,  //   0056 : 			CALL SDATA4 
-                    0xcd,  0x75,  0x01,  //   0059 : 		     	CALL DELAY 
-                           0x16,  0x0e,  //   005c : 			LD   D, 0EH 
-                    0xcd,  0xcc,  0x01,  //   005e : 			CALL SDATA8 
-                    0xcd,  0x75,  0x01,  //   0061 : 		     	CALL DELAY 
-                           0x16,  0x06,  //   0064 : 		        LD   D, 06H 
-                    0xcd,  0xcc,  0x01,  //   0066 : 			CALL SDATA8 
-                    0xcd,  0x75,  0x01,  //   0069 : 		     	CALL DELAY 
-                           0x16,  0x01,  //   006c : 			LD   D, 01H 
-                    0xcd,  0xcc,  0x01,  //   006e : 			CALL SDATA8 
-                    0xcd,  0x75,  0x01,  //   0071 : 		     	CALL DELAY 
-                           0x16,  0x5a,  //   0074 : 			       ld  d, 'Z' 
-                    0xcd,  0xf1,  0x01,  //   0076 : 			     call DDATA8 
-                    0xcd,  0x75,  0x01,  //   0079 : 			          	CALL DELAY 
-                           0x16,  0x38,  //   007c : 			       ld  d, '8' 
-                    0xcd,  0xf1,  0x01,  //   007e : 			     call DDATA8 
-                    0xcd,  0x75,  0x01,  //   0081 : 			          	CALL DELAY 
-                           0x16,  0x30,  //   0084 : 			       ld  d, '0' 
-                    0xcd,  0xf1,  0x01,  //   0086 : 			     call DDATA8 
-                    0xcd,  0x75,  0x01,  //   0089 : 			          	CALL DELAY 
-                           0x16,  0x20,  //   008c : 			       ld  d, ' ' 
-                    0xcd,  0xf1,  0x01,  //   008e : 			     call DDATA8 
-                    0xcd,  0x75,  0x01,  //   0091 : 			          	CALL DELAY 
-                           0x16,  0x53,  //   0094 : 			       ld  d, 'S' 
-                    0xcd,  0xf1,  0x01,  //   0096 : 			     call DDATA8 
-                    0xcd,  0x75,  0x01,  //   0099 : 			          	CALL DELAY 
-                           0x16,  0x68,  //   009c : 			       ld  d, 'h' 
-                    0xcd,  0xf1,  0x01,  //   009e : 			     call DDATA8 
-                    0xcd,  0x75,  0x01,  //   00a1 : 			          	CALL DELAY 
-                           0x16,  0x69,  //   00a4 : 			       ld  d, 'i' 
-                    0xcd,  0xf1,  0x01,  //   00a6 : 			     call DDATA8 
-                    0xcd,  0x75,  0x01,  //   00a9 : 			          	CALL DELAY 
-                           0x16,  0x65,  //   00ac : 			       ld  d, 'e' 
-                    0xcd,  0xf1,  0x01,  //   00ae : 			     call DDATA8 
-                    0xcd,  0x75,  0x01,  //   00b1 : 			          	CALL DELAY 
-                           0x16,  0x6c,  //   00b4 : 			       ld  d, 'l' 
-                    0xcd,  0xf1,  0x01,  //   00b6 : 			     call DDATA8 
-                    0xcd,  0x75,  0x01,  //   00b9 : 			          	CALL DELAY 
-                           0x16,  0x64,  //   00bc : 			       ld  d, 'd' 
-                    0xcd,  0xf1,  0x01,  //   00be : 			     call DDATA8 
-                    0xcd,  0x75,  0x01,  //   00c1 : 			          	CALL DELAY 
-                           0x16,  0x02,  //   00c4 : 		AD:	       ld d, 2 
-                    0xcd,  0xcc,  0x01,  //   00c6 : 			       call     SDATA8 
-                    0xcd,  0xe9,  0x00,  //   00c9 : 				CALL	 ADSAMPLE 
-             0xed,  0x43,  0x00,  0xb0,  //   00cc : 			LD       (ADS0), BC 
-                           0x3e,  0x41,  //   00d0 : 			       LD A, 'A' 
-                                  0x81,  //   00d2 : 				       ADD    C 
-                                  0x57,  //   00d3 : 				       LD D, A 
-                    0xcd,  0xf1,  0x01,  //   00d4 : 			 call DDATA8 
-                           0x18,  0xeb,  //   00d7 : 			JR     AD 
-                           0x18,  0xfe,  //   00d9 : 		LOOP:	JR   LOOP 
-                                  0x7e,  //   00db : 			     DSTR: LD A,(HL) 
-                           0xfe,  0x00,  //   00dc : 			     CP    0 
-                           0x20,  0x01,  //   00de : 			     JR     NZ, CONT 
-                                  0xc9,  //   00e0 : 				     RET 
-                                  0x7e,  //   00e1 : 				     CONT:  LD A,(HL) 
-                                  0x57,  //   00e2 : 				     LD D, A 
-                    0xcd,  0xf1,  0x01,  //   00e3 : 			     CALL  DDATA8 
-                                  0x23,  //   00e6 : 				     INC HL 
-                           0x18,  0xf2,  //   00e7 : 			     JR DSTR 
-                    0xcd,  0x60,  0x02,  //   00e9 : 			CALL CLK_HIGH 
-                    0xcd,  0x30,  0x02,  //   00ec : 			CALL CS_LOW 
-                    0xcd,  0x50,  0x02,  //   00ef : 			CALL CLK_LOW 
-                    0xcd,  0x60,  0x02,  //   00f2 : 		        CALL CLK_HIGH 
-                    0xcd,  0x50,  0x02,  //   00f5 : 			CALL CLK_LOW 
-                    0xcd,  0x60,  0x02,  //   00f8 : 		        CALL CLK_HIGH 
-                    0xcd,  0x50,  0x02,  //   00fb : 			CALL CLK_LOW 
-                    0xcd,  0x60,  0x02,  //   00fe : 		        CALL CLK_HIGH 
-                    0xcd,  0x50,  0x02,  //   0101 : 			CALL CLK_LOW 
-                    0xcd,  0x60,  0x02,  //   0104 : 		        CALL CLK_HIGH 
-                    0xcd,  0x50,  0x02,  //   0107 : 			CALL CLK_LOW 
-                    0xcd,  0x60,  0x02,  //   010a : 		        CALL CLK_HIGH 
-                    0xcd,  0x50,  0x02,  //   010d : 			CALL CLK_LOW 
-                    0xcd,  0x60,  0x02,  //   0110 : 		        CALL CLK_HIGH 
-                    0xcd,  0x50,  0x02,  //   0113 : 			CALL CLK_LOW 
-                    0xcd,  0x60,  0x02,  //   0116 : 		        CALL CLK_HIGH 
-                    0xcd,  0x50,  0x02,  //   0119 : 		        CALL CLK_LOW 
-                    0xcd,  0x80,  0x02,  //   011c : 			CALL DIN_HIGH     	; START bit 
-                    0xcd,  0x60,  0x02,  //   011f : 		        CALL CLK_HIGH 
-                    0xcd,  0x50,  0x02,  //   0122 : 			CALL CLK_LOW 
-                    0xcd,  0x80,  0x02,  //   0125 : 			CALL DIN_HIGH           ;SGL 
-                    0xcd,  0x60,  0x02,  //   0128 : 			CALL CLK_HIGH 
-                    0xcd,  0x50,  0x02,  //   012b : 			CALL CLK_LOW 
-                    0xcd,  0x70,  0x02,  //   012e : 			CALL DIN_LOW 
-                    0xcd,  0x60,  0x02,  //   0131 : 			CALL CLK_HIGH 
-                    0xcd,  0x50,  0x02,  //   0134 : 			CALL CLK_LOW 
-                    0xcd,  0x70,  0x02,  //   0137 : 			CALL DIN_LOW 
-                    0xcd,  0x60,  0x02,  //   013a : 			CALL CLK_HIGH 
-                    0xcd,  0x50,  0x02,  //   013d : 			CALL CLK_LOW 
-                    0xcd,  0x70,  0x02,  //   0140 : 			CALL DIN_LOW 
-                    0xcd,  0x60,  0x02,  //   0143 : 			CALL CLK_HIGH 
-                    0xcd,  0x50,  0x02,  //   0146 : 			CALL CLK_LOW 
-                    0xcd,  0x70,  0x02,  //   0149 : 			CALL DIN_LOW 
-                    0xcd,  0x60,  0x02,  //   014c : 			CALL CLK_HIGH 
-                    0xcd,  0x50,  0x02,  //   014f : 			CALL CLK_LOW 
-                    0xcd,  0x70,  0x02,  //   0152 : 			CALL DIN_LOW 
-                    0xcd,  0x60,  0x02,  //   0155 : 			CALL CLK_HIGH 
-                           0x16,  0x0a,  //   0158 : 			LD	D, 10 
-                    0x01,  0x00,  0x00,  //   015a : 			LD      BC, 0    	;result 
-                    0xcd,  0x60,  0x02,  //   015d : 		        CALL  CLK_HIGH 
-                    0xcd,  0x90,  0x02,  //   0160 : 			CALL GET_DATABIT 
-                           0xcb,  0x21,  //   0163 : 			SLA     C 
-                           0xcb,  0x10,  //   0165 : 			RL      B 
-                           0xe6,  0x01,  //   0167 : 			AND     1 
-                                  0xb1,  //   0169 : 				OR      C 
-                                  0x4f,  //   016a : 				LD      C, A 
-                    0xcd,  0x50,  0x02,  //   016b : 			CALL   CLK_LOW 
-                                  0x15,  //   016e : 				DEC D 
-                           0x20,  0xec,  //   016f : 			JR   NZ, GETLOOP 
-                    0xcd,  0x40,  0x02,  //   0171 : 			CALL CS_HIGH 
-                                  0xc9,  //   0174 : 				RET 
-                           0x26,  0x02,  //   0175 : 			LD   H,02H    
-                           0x2e,  0xff,  //   0177 : 		LOOPH:    LD   L,0FFH    
-                                  0x2d,  //   0179 : 			LOOPL:    DEC   L    
-                           0x20,  0xfd,  //   017a : 		          JR   NZ,LOOPL    
-                                  0x25,  //   017c : 			          DEC   H    
-                           0x20,  0xf8,  //   017d : 		          JR   NZ,LOOPH    
-                                  0xc9,  //   017f : 			          RET       
-                           0x3e,  0xcf,  //   0180 : 			LD A, 0CFH 
-                           0xed,  0x79,  //   0182 : 			OUT (C), A 
-                                  0x7c,  //   0184 : 				LD A, H 
-                           0xed,  0x79,  //   0185 : 			OUT (C), A 
-                                  0x7d,  //   0187 : 				LD A, L 
-                                  0x4a,  //   0188 : 				LD C, D 
-                           0xed,  0x79,  //   0189 : 			OUT (C), A 
-                                  0xc9,  //   018b : 				RET 
-                                  0xc5,  //   018c : 			RS_LOW:PUSH   BC 
-                                  0xd5,  //   018d : 			      PUSH    DE 
-                           0x0e,  0x81,  //   018e : 			LD    C, IO_ADDR_PIO1_BD 
-                    0x21,  0x01,  0xa0,  //   0190 : 			LD    HL,SHADOW_B 
-                                  0x7e,  //   0193 : 				LD    A, (HL) 
-                           0xcb,  0x87,  //   0194 : 			RES   0, A 
-                                  0x77,  //   0196 : 				LD    (HL), A 
-                           0xed,  0x79,  //   0197 : 			OUT   (C), A 
-                                  0xd1,  //   0199 : 				POP   DE 
-                                  0xc1,  //   019a : 				POP   BC 
-                                  0xc9,  //   019b : 				RET 
-                                  0xc5,  //   019c : 			RS_HIGH:PUSH  BC 
-                                  0xd5,  //   019d : 			      PUSH    DE 
-                           0x0e,  0x81,  //   019e : 		        LD    C, IO_ADDR_PIO1_BD 
-                    0x21,  0x01,  0xa0,  //   01a0 : 			LD    HL,SHADOW_B 
-                                  0x7e,  //   01a3 : 				LD    A, (HL) 
-                           0xcb,  0xc7,  //   01a4 : 			SET   0, A 
-                                  0x77,  //   01a6 : 				LD    (HL), A 
-                           0xed,  0x79,  //   01a7 : 			OUT   (C), A 
-                                  0xd1,  //   01a9 : 				POP   DE	 
-                                  0xc1,  //   01aa : 				POP   BC 
-                                  0xc9,  //   01ab : 				RET 
-                                  0xc5,  //   01ac : 			E_LOW:  PUSH  BC 
-                                  0xd5,  //   01ad : 			        PUSH    DE 
-                           0x0e,  0x81,  //   01ae : 			LD    C, IO_ADDR_PIO1_BD 
-                    0x21,  0x01,  0xa0,  //   01b0 : 			LD    HL,SHADOW_B 
-                                  0x7e,  //   01b3 : 				LD    A, (HL) 
-                           0xcb,  0x8f,  //   01b4 : 			RES   1, A 
-                                  0x77,  //   01b6 : 				LD    (HL), A 
-                           0xed,  0x79,  //   01b7 : 			OUT   (C), A 
-                                  0xd1,  //   01b9 : 				POP   DE 
-                                  0xc1,  //   01ba : 				POP   BC 
-                                  0xc9,  //   01bb : 				RET 
-                                  0xc5,  //   01bc : 			E_HIGH: PUSH BC 
-                                  0xd5,  //   01bd : 			      PUSH    DE 
-                           0x0e,  0x81,  //   01be : 			LD    C, IO_ADDR_PIO1_BD 
-                    0x21,  0x01,  0xa0,  //   01c0 : 			LD    HL,SHADOW_B 
-                                  0x7e,  //   01c3 : 				LD    A, (HL) 
-                           0xcb,  0xcf,  //   01c4 : 			SET   1, A 
-                                  0x77,  //   01c6 : 				LD    (HL), A 
-                           0xed,  0x79,  //   01c7 : 			OUT   (C), A 
-                                  0xd1,  //   01c9 : 				POP   DE	 
-                                  0xc1,  //   01ca : 				POP   BC 
-                                  0xc9,  //   01cb : 				RET 
-                           0x0e,  0x80,  //   01cc : 			LD    C, IO_ADDR_PIO1_AD 
-                    0xcd,  0x8c,  0x01,  //   01ce : 			CALL  RS_LOW 
-                    0xcd,  0xbc,  0x01,  //   01d1 : 			CALL  E_HIGH 
-                                  0x7a,  //   01d4 : 				LD    A, D 
-                           0x0e,  0x80,  //   01d5 : 			LD    C, IO_ADDR_PIO1_AD	 
-                           0xed,  0x79,  //   01d7 : 			OUT   (C), A 
-                    0xcd,  0xac,  0x01,  //   01d9 : 			CALL  E_LOW 
-                    0xcd,  0xbc,  0x01,  //   01dc : 			CALL  E_HIGH 
-                                  0x7a,  //   01df : 				LD    A, D 
-                           0xcb,  0x27,  //   01e0 : 			SLA   A 
-                           0xcb,  0x27,  //   01e2 : 			SLA   A 
-                           0xcb,  0x27,  //   01e4 : 			SLA   A 
-                           0xcb,  0x27,  //   01e6 : 			SLA   A 
-                           0xed,  0x79,  //   01e8 : 			OUT   (C), A 
-                    0xcd,  0xac,  0x01,  //   01ea : 			CALL  E_LOW 
-                    0xcd,  0x9c,  0x01,  //   01ed : 			CALL  RS_HIGH 
-                                  0xc9,  //   01f0 : 				RET 
-                           0x0e,  0x80,  //   01f1 : 			LD    C, IO_ADDR_PIO1_AD 
-                    0xcd,  0x9c,  0x01,  //   01f3 : 			CALL  RS_HIGH 
-                    0xcd,  0xbc,  0x01,  //   01f6 : 			CALL  E_HIGH 
-                                  0x7a,  //   01f9 : 				LD    A, D 
-                           0x0e,  0x80,  //   01fa : 			LD    C, IO_ADDR_PIO1_AD	 
-                           0xed,  0x79,  //   01fc : 			OUT   (C), A 
-                    0xcd,  0xac,  0x01,  //   01fe : 			CALL  E_LOW 
-                    0xcd,  0xbc,  0x01,  //   0201 : 			CALL  E_HIGH 
-                                  0x7a,  //   0204 : 				LD    A, D 
-                           0xcb,  0x27,  //   0205 : 			SLA   A 
-                           0xcb,  0x27,  //   0207 : 			SLA   A 
-                           0xcb,  0x27,  //   0209 : 			SLA   A 
-                           0xcb,  0x27,  //   020b : 			SLA   A 
-                           0xed,  0x79,  //   020d : 			OUT   (C), A 
-                    0xcd,  0xac,  0x01,  //   020f : 			CALL  E_LOW 
-                    0xcd,  0x9c,  0x01,  //   0212 : 			CALL  RS_HIGH 
-                                  0xc9,  //   0215 : 				RET 
-                    0xcd,  0x8c,  0x01,  //   0216 : 		SDATA4: CALL  RS_LOW 
-                    0xcd,  0xbc,  0x01,  //   0219 : 			CALL  E_HIGH 
-                                  0x7a,  //   021c : 				LD    A, D 
-                           0xcb,  0x27,  //   021d : 			SLA   A 
-                           0xcb,  0x27,  //   021f : 			SLA   A 
-                           0xcb,  0x27,  //   0221 : 			SLA   A 
-                           0xcb,  0x27,  //   0223 : 			SLA   A 
-                           0x0e,  0x80,  //   0225 : 			LD    C, IO_ADDR_PIO1_AD 
-                           0xed,  0x79,  //   0227 : 			OUT   (C), A 
-                    0xcd,  0xac,  0x01,  //   0229 : 			CALL  E_LOW 
-                    0xcd,  0x9c,  0x01,  //   022c : 			CALL  RS_HIGH 
-                                  0xc9,  //   022f : 				RET 
-                                  0xc5,  //   0230 : 			CS_LOW: PUSH    BC 
-                                  0xd5,  //   0231 : 			        PUSH    DE 
-                           0x0e,  0x00,  //   0232 : 			LD    C, IO_ADDR_PIO0_AD 
-                    0x21,  0x02,  0xa0,  //   0234 : 			LD    HL,SHADOW_AD 
-                                  0x7e,  //   0237 : 				LD    A, (HL) 
-                           0xcb,  0x87,  //   0238 : 			RES   0, A 
-                                  0x77,  //   023a : 				LD    (HL), A 
-                           0xed,  0x79,  //   023b : 			OUT   (C), A 
-                                  0xd1,  //   023d : 				POP   DE 
-                                  0xc1,  //   023e : 				POP   BC 
-                                  0xc9,  //   023f : 				RET 
-                                  0xc5,  //   0240 : 			CS_HIGH: PUSH    BC 
-                                  0xd5,  //   0241 : 			        PUSH    DE 
-                           0x0e,  0x00,  //   0242 : 			LD    C, IO_ADDR_PIO0_AD 
-                    0x21,  0x02,  0xa0,  //   0244 : 			LD    HL,SHADOW_AD 
-                                  0x7e,  //   0247 : 				LD    A, (HL) 
-                           0xcb,  0xc7,  //   0248 : 			SET   0, A 
-                                  0x77,  //   024a : 				LD    (HL), A 
-                           0xed,  0x79,  //   024b : 			OUT   (C), A 
-                                  0xd1,  //   024d : 				POP   DE 
-                                  0xc1,  //   024e : 				POP   BC 
-                                  0xc9,  //   024f : 				RET 
-                                  0xc5,  //   0250 : 			CLK_LOW: PUSH    BC 
-                                  0xd5,  //   0251 : 			        PUSH    DE 
-                           0x0e,  0x00,  //   0252 : 			LD    C, IO_ADDR_PIO0_AD 
-                    0x21,  0x02,  0xa0,  //   0254 : 			LD    HL,SHADOW_AD 
-                                  0x7e,  //   0257 : 				LD    A, (HL) 
-                           0xcb,  0x8f,  //   0258 : 			RES   1, A 
-                                  0x77,  //   025a : 				LD    (HL), A 
-                           0xed,  0x79,  //   025b : 			OUT   (C), A 
-                                  0xd1,  //   025d : 				POP   DE 
-                                  0xc1,  //   025e : 				POP   BC 
-                                  0xc9,  //   025f : 				RET 
-                                  0xc5,  //   0260 : 			CLK_HIGH: PUSH    BC 
-                                  0xd5,  //   0261 : 			        PUSH    DE 
-                           0x0e,  0x00,  //   0262 : 			LD    C, IO_ADDR_PIO0_AD 
-                    0x21,  0x02,  0xa0,  //   0264 : 			LD    HL,SHADOW_AD 
-                                  0x7e,  //   0267 : 				LD    A, (HL) 
-                           0xcb,  0xcf,  //   0268 : 			SET   1, A 
-                                  0x77,  //   026a : 				LD    (HL), A 
-                           0xed,  0x79,  //   026b : 			OUT   (C), A 
-                                  0xd1,  //   026d : 				POP   DE 
-                                  0xc1,  //   026e : 				POP   BC 
-                                  0xc9,  //   026f : 				RET 
-                                  0xc5,  //   0270 : 			DIN_LOW: PUSH    BC 
-                                  0xd5,  //   0271 : 			        PUSH    DE 
-                           0x0e,  0x00,  //   0272 : 			LD    C, IO_ADDR_PIO0_AD 
-                    0x21,  0x02,  0xa0,  //   0274 : 			LD    HL,SHADOW_AD 
-                                  0x7e,  //   0277 : 				LD    A, (HL) 
-                           0xcb,  0x97,  //   0278 : 			RES   2, A 
-                                  0x77,  //   027a : 				LD    (HL), A 
-                           0xed,  0x79,  //   027b : 			OUT   (C), A 
-                                  0xd1,  //   027d : 				POP   DE 
-                                  0xc1,  //   027e : 				POP   BC 
-                                  0xc9,  //   027f : 				RET 
-                                  0xc5,  //   0280 : 			DIN_HIGH: PUSH    BC 
-                                  0xd5,  //   0281 : 			        PUSH    DE 
-                           0x0e,  0x00,  //   0282 : 			LD    C, IO_ADDR_PIO0_AD 
-                    0x21,  0x02,  0xa0,  //   0284 : 			LD    HL,SHADOW_AD 
-                                  0x7e,  //   0287 : 				LD    A, (HL) 
-                           0xcb,  0xd7,  //   0288 : 			SET   2, A 
-                                  0x77,  //   028a : 				LD    (HL), A 
-                           0xed,  0x79,  //   028b : 			OUT   (C), A 
-                                  0xd1,  //   028d : 				POP   DE 
-                                  0xc1,  //   028e : 				POP   BC 
-                                  0xc9,  //   028f : 				RET 
-                                  0xc5,  //   0290 : 			GET_DATABIT: PUSH    BC 
-                                  0xd5,  //   0291 : 			        PUSH    DE 
-                           0x0e,  0x00,  //   0292 : 			LD    C, IO_ADDR_PIO0_AD 
-                           0xed,  0x78,  //   0294 : 			IN     A, (C) 
-                           0xe6,  0x08,  //   0296 : 			AND    08H 
-                           0xcb,  0x3f,  //   0298 : 			SRL    A 
-                           0xcb,  0x3f,  //   029a : 			SRL    A 
-                           0xcb,  0x3f,  //   029c : 			SRL    A	 
-                                  0xd1,  //   029e : 				POP   DE 
-                                  0xc1,  //   029f : 				POP   BC 
-                                  0xc9,  //   02a0 : 				RET 
   };
 
-BYTE example_code_df_test[] =
+//--------------------------------------------------------------------------------
+// Code that runs between instructions
+
+const BYTE inter_inst_code_test[] =
   {
-  0xf3,
+    0xf5, 0xe5, 0xe1, 0xf1,
+    0x18, 0xFA
   };
+
 
 //--------------------------------------------------------------------------------
 
@@ -2215,7 +2012,7 @@ struct
       {"Flash turn LCD shield backlight", example_code_lcd_bl_flash, sizeof(example_code_lcd_bl_flash)},
       {"Slow Flash turn LCD shield backlight", example_code_lcd_slow_flash, sizeof(example_code_lcd_slow_flash)},
       {"LCD test",                             example_code_lcd_test, sizeof(example_code_lcd_test)},
-      {"DF playing around test",          example_code_df_test,      sizeof(example_code_df_test)},
+      //{"DF playing around test",          example_code_df_test,      sizeof(example_code_df_test)},
       {"-",                               0,                         0},
     };
 
@@ -2223,10 +2020,10 @@ struct
 void cmd_set_example_code(String cmd)
 {
   if( cmd.length() == 1 )
-  {
-    Serial.println(F("Set example code using 'sN' where 'N' is from the example code list"));
-    return;
-  }
+    {
+      Serial.println(F("Set example code using 'sN' where 'N' is from the example code list"));
+      return;
+    }
 
   String arg = cmd.substring(1);
 
@@ -2522,177 +2319,189 @@ void cmd_trace_test_code(String cmd)
               Serial.print( c ); Serial.flush();
 
 	      if( c == '\n' || c == '\r' )
-              {
-                //Serial.print("Action ");
-                //Serial.println(trace_cmd);
+		{
+		  //Serial.print("Action ");
+		  //Serial.println(trace_cmd);
 
 #if ENABLE_TIMINGS
-		t_last = millis();
+		  t_last = millis();
 #endif
-                switch( trace_cmd.charAt(0) )
-                {
+		  switch( trace_cmd.charAt(0) )
+		    {
 #if ENABLE_TIMINGS
-		case 'z':
-		  // Display stored timing information
-		  Serial.println(F("Mega CLK timing"));
-		  average = 0;
+		    case 'z':
+		      // Display stored timing information
+		      Serial.println(F("Mega CLK timing"));
+		      average = 0;
 		  
-		  for(int i=0; i<NUM_TIMED_CLKS;i++)
-		    {
-		      Serial.print(" ");
-		      Serial.print(last_clks[i]);
-		      average += last_clks[i];
-		    }
-		  Serial.println("");
-		  Serial.print(F("Average:"));
-		  Serial.println(average / NUM_TIMED_CLKS);
+		      for(int i=0; i<NUM_TIMED_CLKS;i++)
+			{
+			  Serial.print(" ");
+			  Serial.print(last_clks[i]);
+			  average += last_clks[i];
+			}
+		      Serial.println("");
+		      Serial.print(F("Average:"));
+		      Serial.println(average / NUM_TIMED_CLKS);
 		  
-		  break;
+		      break;
 #endif		  
-                case 't':
-                  fast_mode = true;
-                  quiet = true;
-                  delay(100);
-                  if( trace_cmd.length() > 2 )
-                    fast_mode_n = strtol((trace_cmd.c_str())+1, NULL, 10);
-                  else
-                    fast_mode_n = -1;
-                  cmdloop = false;
-                  break;
-
-                case 'n':
-                  fast_mode = true;
-                  quiet = true;
-                  delay(100);
-                  fast_mode_n = -1;
-		  stop_on_m1 = true;
-		  fast_to_address = -1;
-                  cmdloop = false;
-                  break;
-
-                case 'c':
-                  fast_mode = true;
-                  quiet = true;
-                  delay(100);
-                  fast_mode_n = -1;
-		  stop_on_m1 = true;
-                  fast_to_address = strtol((trace_cmd.c_str())+1, NULL, 16);
-                  cmdloop = false;
-                  break;
-
-                case 'f':
-                  fast_mode = true;
-                  fast_mode_n = -1;
-                  quiet = true;
-		  delay(100);
-		  cmdloop = false;
-                  break;
-
-                case 'b':
-                  delay(100);
-                  trigger_address = strtol((trace_cmd.c_str())+1, NULL, 16);
-                  trigger_on = true;
-                  cmdloop=false;
-                  break;
-
-                case 'B':
-                  trigger_on = !trigger_on;
-                  break;
-		      
-                case 'M':
-                  // Select Mega control of reset and clock
-                  digitalWrite(SW0_Pin, HIGH);
-                  digitalWrite(SW1_Pin, LOW);
-                  break;
-		      
-                case 'F':
-                  // Free run
-
-                  assert_signal(SIG_RES);
-
-                  // Mega relinquishes control of reset and clock, letting hw have it
-                  //
-                  digitalWrite(SW0_Pin, LOW);
-                  digitalWrite(SW1_Pin, LOW);
-
-                  // Mega relinquishes IO and memory map
-                  //
-                  digitalWrite(MAPRQI_Pin, LOW);
-                  digitalWrite(MAPRQM_Pin, LOW);
-
-                  // Reset the Z80
-                  //
-                  reset_z80();
-
-                  break;
-                  
-                case 'I':
-                  digitalWrite(MAPRQI_Pin, HIGH);
-                  break;
-
-                case 'i':
-                  digitalWrite(MAPRQI_Pin, LOW);
-                  break;
-
-                case 'J':
-                  digitalWrite(MAPRQM_Pin, HIGH);
-                  break;
-
-                case 'j':
-                  digitalWrite(MAPRQM_Pin, LOW);
-                  break;
-		      
-                case 'G':
-                  bus_request();
-                  break;
-		      
-                case 'R':
-                  bus_release();
-                  break;
-		      
-                case 'r':
-                  cmd_reset_z80("");
-                  break;
-
-                case '1':
-                  assert_signal(SIG_RES);
-                  break;
-		  
-                case '0':
-                  deassert_signal(SIG_RES);
-                  break;
-		      
-                case 'q':
-                  running = false;
-                  cmdloop = false;
-                  break;
-
-
-		case '-':
-		  // Display trace data
-		  Serial.println(F("Trace"));
-		  for(int i=0; i<TRACE_SIZE;i++)
-		    {
-		      Serial.print(textify_trace_rec(i));
-		      if ( i == trace_index )
-			{
-			  Serial.println("  <- oldest");
-			}
+		    case 't':
+		      fast_mode = true;
+		      quiet = true;
+		      delay(100);
+		      if( trace_cmd.length() > 2 )
+			fast_mode_n = strtol((trace_cmd.c_str())+1, NULL, 10);
 		      else
-			{
-			  Serial.println("");
-			}
-		    }
-		  break;
+			fast_mode_n = -1;
+		      cmdloop = false;
+		      break;
+
+		    case 'n':
+		      fast_mode = true;
+		      quiet = true;
+		      delay(100);
+		      fast_mode_n = -1;
+		      stop_on_m1 = true;
+		      fast_to_address = -1;
+		      cmdloop = false;
+		      break;
+
+		    case 'c':
+		      fast_mode = true;
+		      quiet = true;
+		      delay(100);
+		      fast_mode_n = -1;
+		      stop_on_m1 = true;
+		      fast_to_address = strtol((trace_cmd.c_str())+1, NULL, 16);
+		      cmdloop = false;
+		      break;
+
+		    case 'f':
+		      fast_mode = true;
+		      fast_mode_n = -1;
+		      quiet = true;
+		      delay(100);
+		      cmdloop = false;
+		      break;
+
+		    case 'g':
+		      fast_mode = true;
+		      fast_mode_n = -1;
+		      inter_inst = true;
+		      inter_inst_code = inter_inst_code_test;
+		      inter_inst_code_length = sizeof(inter_inst_code_test);
+		      inter_inst_index = 0;
+		      quiet = true;
+		      delay(100);
+		      cmdloop = false;
+		      break;
+
+		    case 'b':
+		      delay(100);
+		      trigger_address = strtol((trace_cmd.c_str())+1, NULL, 16);
+		      trigger_on = true;
+		      cmdloop=false;
+		      break;
+
+		    case 'B':
+		      trigger_on = !trigger_on;
+		      break;
+		      
+		    case 'M':
+		      // Select Mega control of reset and clock
+		      digitalWrite(SW0_Pin, HIGH);
+		      digitalWrite(SW1_Pin, LOW);
+		      break;
+		      
+		    case 'F':
+		      // Free run
+
+		      assert_signal(SIG_RES);
+
+		      // Mega relinquishes control of reset and clock, letting hw have it
+		      //
+		      digitalWrite(SW0_Pin, LOW);
+		      digitalWrite(SW1_Pin, LOW);
+
+		      // Mega relinquishes IO and memory map
+		      //
+		      digitalWrite(MAPRQI_Pin, LOW);
+		      digitalWrite(MAPRQM_Pin, LOW);
+
+		      // Reset the Z80
+		      //
+		      reset_z80();
+
+		      break;
+                  
+		    case 'I':
+		      digitalWrite(MAPRQI_Pin, HIGH);
+		      break;
+
+		    case 'i':
+		      digitalWrite(MAPRQI_Pin, LOW);
+		      break;
+
+		    case 'J':
+		      digitalWrite(MAPRQM_Pin, HIGH);
+		      break;
+
+		    case 'j':
+		      digitalWrite(MAPRQM_Pin, LOW);
+		      break;
+		      
+		    case 'G':
+		      bus_request();
+		      break;
+		      
+		    case 'R':
+		      bus_release();
+		      break;
+		      
+		    case 'r':
+		      cmd_reset_z80("");
+		      break;
+
+		    case '1':
+		      assert_signal(SIG_RES);
+		      break;
 		  
-                case '\r':
-                  cmdloop = false;
-                  break;
-                }
+		    case '0':
+		      deassert_signal(SIG_RES);
+		      break;
+		      
+		    case 'q':
+		      running = false;
+		      cmdloop = false;
+		      break;
+
+
+		    case '-':
+		      // Display trace data
+		      Serial.println(F("Trace"));
+		      for(int i=0; i<TRACE_SIZE;i++)
+			{
+			  Serial.print(textify_trace_rec(i));
+			  if ( i == trace_index )
+			    {
+			      Serial.println("  <- oldest");
+			    }
+			  else
+			    {
+			      Serial.println("");
+			    }
+			}
+		      break;
+		  
+		    case '\r':
+		      cmdloop = false;
+		      break;
+		    }
 		
-                Serial.print(F("trace> ")); Serial.flush();
-                trace_cmd = "";
-              }
+		  Serial.print(F("trace> ")); Serial.flush();
+		  trace_cmd = "";
+		}
 	      
 	    }
 	}
@@ -2897,135 +2706,135 @@ void cmd_memory(String cmd)
           Serial.print( c ); Serial.flush();
 
           if( c == '\n' || c == '\r' )
-          {
+	    {
 #if ENABLE_TIMINGS
-	    start = millis();
+	      start = millis();
 #endif
 	    
-            switch( memory_cmd.charAt(0) )
-            {
-            case 'u':
-              // Upload binary file to flash bank 0
-              Serial.println(F("Start upload of binary file. Will write to bank 0"));
+	      switch( memory_cmd.charAt(0) )
+		{
+		case 'u':
+		  // Upload binary file to flash bank 0
+		  Serial.println(F("Start upload of binary file. Will write to bank 0"));
 		  
-              upload_to_bank(0);
-              break;
+		  upload_to_bank(0);
+		  break;
 
-            case 'r':
-              // display memory at address
-              char ads[10];
-              BYTE d;
-              address=working_address;
-              for(int i=0; i<256; i++)
-                {
-                  if( (i%16)==0)
-                    {
-                      Serial.println("");
+		case 'r':
+		  // display memory at address
+		  char ads[10];
+		  BYTE d;
+		  address=working_address;
+		  for(int i=0; i<256; i++)
+		    {
+		      if( (i%16)==0)
+			{
+			  Serial.println("");
                       
-                      sprintf(ads, "%04X", address);
-                      Serial.print(ads);
-                      Serial.print(": ");
-                    }
-                  d = read_cycle(address, working_space);
-                  sprintf(ads, "%02X ", d);
-                  Serial.print(ads);
-                  address++;
-                }
-              Serial.println("");
-              break;
+			  sprintf(ads, "%04X", address);
+			  Serial.print(ads);
+			  Serial.print(": ");
+			}
+		      d = read_cycle(address, working_space);
+		      sprintf(ads, "%02X ", d);
+		      Serial.print(ads);
+		      address++;
+		    }
+		  Serial.println("");
+		  break;
 
-            case 'w':
-              delay(100);
-              write_cycle(working_address, strtol((memory_cmd.c_str())+1, NULL, 16), working_space);
-              break;
+		case 'w':
+		  delay(100);
+		  write_cycle(working_address, strtol((memory_cmd.c_str())+1, NULL, 16), working_space);
+		  break;
 
-            case 'm':
-              working_space = SIG_MREQ;
-              break;
+		case 'm':
+		  working_space = SIG_MREQ;
+		  break;
 
-            case 'i':
-              working_space = SIG_IOREQ;
-              break;
+		case 'i':
+		  working_space = SIG_IOREQ;
+		  break;
 		  
-            case 'a':
-              // Set address to manipulate
-              delay(100);
-              working_address = strtol((memory_cmd.c_str())+1, NULL, 16);
-              cmdloop=false;
-              break;
+		case 'a':
+		  // Set address to manipulate
+		  delay(100);
+		  working_address = strtol((memory_cmd.c_str())+1, NULL, 16);
+		  cmdloop=false;
+		  break;
               
-            case 'b':
-              // Write a bank value to bank register
-              delay(100);
+		case 'b':
+		  // Write a bank value to bank register
+		  delay(100);
               
-              write_cycle(IO_ADDR_BANK, strtol((memory_cmd.c_str())+1, NULL, 16), SIG_IOREQ);
-              cmdloop=false;
-              break;
+		  write_cycle(IO_ADDR_BANK, strtol((memory_cmd.c_str())+1, NULL, 16), SIG_IOREQ);
+		  cmdloop=false;
+		  break;
 
-            case 'e':
-              // Erase a sector
-              delay(100);
+		case 'e':
+		  // Erase a sector
+		  delay(100);
 
-              Serial.println(F("Starting erase..."));
-              flash_erase(FLASH_ERASE_SECTOR_CMD, strtol((memory_cmd.c_str())+1, NULL, 16));
-              Serial.println("done.");
-              cmdloop=false;
-              break;
+		  Serial.println(F("Starting erase..."));
+		  flash_erase(FLASH_ERASE_SECTOR_CMD, strtol((memory_cmd.c_str())+1, NULL, 16));
+		  Serial.println("done.");
+		  cmdloop=false;
+		  break;
 
-            case 'E':
-              flush_serial();
+		case 'E':
+		  flush_serial();
 		  
-              // Erase a sector
-              Serial.println(F("Starting chip erase..."));
-              flash_erase(FLASH_ERASE_CHIP_CMD, 0x5555);
-              Serial.println("done.");
-              cmdloop=false;
-              break;
+		  // Erase a sector
+		  Serial.println(F("Starting chip erase..."));
+		  flash_erase(FLASH_ERASE_CHIP_CMD, 0x5555);
+		  Serial.println("done.");
+		  cmdloop=false;
+		  break;
 
-            case 'X':
-              //flush_serial();
-              // Take the example code and write it to flash
-              for(int i=0; i<example_code_length; i++)
-                {
-                  flash_write_byte(0, i, example_code[i]);
-                }
-              break;
+		case 'X':
+		  //flush_serial();
+		  // Take the example code and write it to flash
+		  for(int i=0; i<example_code_length; i++)
+		    {
+		      flash_write_byte(0, i, example_code[i]);
+		    }
+		  break;
 
-            case 'Y':
-              //flush_serial();
+		case 'Y':
+		  //flush_serial();
 
-              // Take the example code and write it to all banks of flash 
-              for(int b=0; b<16;b++)
-                {
-                  Serial.print(F("Writing to bank "));
-                  Serial.println(b);
-                  for(int i=0; i<example_code_length; i++)
-                    {
-                      flash_write_byte(b, i, example_code[i]);
-                    }
-                }
-              break;
+		  // Take the example code and write it to all banks of flash 
+		  for(int b=0; b<16;b++)
+		    {
+		      Serial.print(F("Writing to bank "));
+		      Serial.println(b);
+		      for(int i=0; i<example_code_length; i++)
+			{
+			  flash_write_byte(b, i, example_code[i]);
+			}
+		    }
+		  break;
 		  
-            case 'q':
-              running = false;
-              cmdloop = false;
-              break;
+		case 'q':
+		  running = false;
+		  cmdloop = false;
+		  break;
 		      
-            case '\r':
-              cmdloop = false;
-              break;
-            }
+		case '\r':
+		  cmdloop = false;
+		  break;
+		}
 
 #if ENABLE_TIMINGS
-		  end = millis();
-		  Serial.print(F("Elapsed:"));
-		  Serial.print(end-start);
-		  Serial.println("ms");
+	      end = millis();
+	      Serial.print(F("Elapsed:"));
+	      Serial.print(end-start);
+	      Serial.println("ms");
 #endif		  
 
-            memory_cmd = "";
-            Serial.print(F("memory> ")); Serial.flush();
-          }
+	      memory_cmd = "";
+	      Serial.print(F("memory> ")); Serial.flush();
+	    }
 	  
 	}
     }
@@ -3089,12 +2898,12 @@ void print_commands()
   Serial.println( F("============\n") );
 
   while( cmdlist[i].desc != "" )
-  {
-    Serial.print  ( cmdlist[i].cmdname );
-    Serial.print  ( F(": ") );
-    Serial.println( cmdlist[i].desc );
-    i++;
-  }
+    {
+      Serial.print  ( cmdlist[i].cmdname );
+      Serial.print  ( F(": ") );
+      Serial.println( cmdlist[i].desc );
+      i++;
+    }
 }
 
 // Interaction with the Mega from the host PC is through a 'monitor' command line type interface.
@@ -3290,3 +3099,8 @@ void loop()
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+
+
+
+
+
