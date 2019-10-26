@@ -220,14 +220,19 @@ typedef struct
 int trace_on = 1;
 
 int trace_index = 0;
+int ii_trace_index = 0;
+
+// Instruction bus trace
 TRACE_REC trace[TRACE_SIZE];
+
+// Inter Instruction bus trace
+TRACE_REC ii_trace[TRACE_SIZE];
 
 char trace_rec_buf[40];
 
-char *textify_trace_rec(int i)
+char *textify_trace_rec(int i, TRACE_REC *trace)
 {
   char type[20];
-
   
   switch(trace[i].type)
     {
@@ -264,11 +269,22 @@ void trace_rec(TRACE_REC_TYPE trt)
 {
   if ( trace_on )
     {
-      trace[trace_index].type = trt;
-      trace[trace_index].data = data_state();
-      trace[trace_index].addr = addr_state();
-      trace_index++;
-      trace_index = trace_index % TRACE_SIZE;
+      if( inter_inst )
+	{
+	  ii_trace[ii_trace_index].type = trt;
+	  ii_trace[ii_trace_index].data = data_state();
+	  ii_trace[ii_trace_index].addr = addr_state();
+	  ii_trace_index++;
+	  ii_trace_index = ii_trace_index % TRACE_SIZE;
+	}
+      else
+	{
+	  trace[trace_index].type = trt;
+	  trace[trace_index].data = data_state();
+	  trace[trace_index].addr = addr_state();
+	  trace_index++;
+	  trace_index = trace_index % TRACE_SIZE;
+	}
     }
 }
 
@@ -1832,6 +1848,7 @@ void cmd_dump_signals()
 // Writes to RAM then reads it back
 const BYTE example_code_ram_chk[] =
   {
+    0x31, 0x00, 0x90,    // set stack up
     0x3e, 0xaa,          // LOOP:   LD A, 03EH
     0x21, 0x34, 0x82,    //         LD HL 01234H
     0x77,                //         LD (HL), A
@@ -2386,6 +2403,10 @@ void cmd_trace_test_code(String cmd)
 		      break;
 
 		    case 'g':
+		      // reset the instruction trace index so we always have a fresh trace for this
+		      // code. It makes it easier to examine later
+		      ii_trace_index = 0;
+		      
 		      fast_mode = true;
 		      fast_mode_n = -1;
 		      inter_inst = true;
@@ -2478,12 +2499,21 @@ void cmd_trace_test_code(String cmd)
 
 
 		    case '-':
+		    case '=':
 		      // Display trace data
-		      Serial.println(F("Trace"));
+		      if (trace_cmd.charAt(0)=='=')
+			{
+			  Serial.println(F("Inter Instruction Trace"));
+			}
+		      else
+			{
+			  Serial.println(F("Trace"));
+			}
+		      
 		      for(int i=0; i<TRACE_SIZE;i++)
 			{
-			  Serial.print(textify_trace_rec(i));
-			  if ( i == trace_index )
+			  Serial.print(textify_trace_rec(i, (trace_cmd.charAt(0)=='=')?ii_trace: trace));
+			  if ( i == ((trace_cmd.charAt(0)=='=')?ii_trace_index: trace_index) )
 			    {
 			      Serial.println("  <- oldest");
 			    }
