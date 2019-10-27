@@ -43,6 +43,13 @@ const BYTE instruction_length[] =
     0xe5, 1,
     0xe1, 1,
     0x18, 2,    // JR x
+    0x23, 1,
+    0x7e, 1,
+    0x77, 1,
+    0xc3, 3,
+    0x21, 3,
+    0x3e, 2,
+    0x31, 3,
     0x00, 1     // Both NOP and end of table
   };
 
@@ -344,12 +351,12 @@ struct
 	 MREQ_Pin,   0, {{MODE_SLAVE, INPUT,  HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}},  EV_A_MREQ, EV_D_MREQ},
       {  " IOREQ", "Z80  --> Mega",   "    - Asserted, means lower half of address bus holds an IO address for a read or write",
 	 IOREQ_Pin,  0, {{MODE_SLAVE, INPUT,  HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}},  EV_A_IOREQ, EV_D_IOREQ},
+      {  "  RFSH", "Z80  --> Mega",   "    - Asserted, means Z80 is in refresh state",
+	 RFSH_Pin,   0, {{MODE_SLAVE, INPUT,  HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}},  EV_A_RFSH, EV_D_RFSH},
       {  "    WR", "Z80  --> Mega",   "    - Asserted, means the data bus holds a value to be written",
 	 WR_Pin,     0, {{MODE_SLAVE, INPUT,  HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}},  EV_A_WR, EV_D_WR},
       {  "    RD", "Z80  --> Mega",   "    - Asserted, means the Z80 wants to read data from external device",
 	 RD_Pin,     0, {{MODE_SLAVE, INPUT,  HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}},  EV_A_RD, EV_D_RD},
-      {  "  RFSH", "Z80  --> Mega",   "    - Asserted, means Z80 is in refresh state",
-	 RFSH_Pin,   0, {{MODE_SLAVE, INPUT,  HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}},  EV_A_RFSH, EV_D_RFSH},
       {  "   NMI", "Mega --> Z80",    "     - Asserted, means a non maskable interrupt is being sent to the Z80",
 	 NMI_Pin,    0, {{MODE_SLAVE, OUTPUT, HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}}, EV_A_NMI, EV_D_NMI},
       {  "   INT", "Mega --> Z80",    "     - Asserted, means a maskable interrupt is being sent to the Z80",
@@ -527,9 +534,9 @@ const STATE bsm[] =
       },
       {
 	{EV_A_M1,   STATE_OP1},
+	{EV_A_RFSH, STATE_RFSH1},
 	{EV_A_MREQ, STATE_MEM1},
 	{EV_A_IOREQ, STATE_IO1},
-	{EV_A_RFSH, STATE_RFSH1},
       }
     },
     { 
@@ -567,8 +574,8 @@ const STATE bsm[] =
 	entry_trc_op,
       },
       {
+	{EV_A_RFSH, STATE_RFSH1},
 	{EV_D_RD, STATE_OP4},
-	{EV_A_NULL, STATE_NULL},
 	{EV_A_NULL, STATE_NULL},
 	{EV_A_NULL, STATE_NULL},
       }
