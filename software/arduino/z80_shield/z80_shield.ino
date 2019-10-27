@@ -42,6 +42,10 @@ const BYTE instruction_length[] =
     0xf1, 1,
     0xe5, 1,
     0xe1, 1,
+    0xc1, 1,
+    0xc5, 1,
+    0xd1, 1,
+    0xd5, 1,
     0x18, 2,    // JR x
     0x23, 1,
     0x7e, 1,
@@ -61,6 +65,7 @@ BYTE *inter_inst_code = NULL;
 unsigned int inter_inst_index = 0;
 unsigned int inter_inst_code_length = 0;
 unsigned int inter_inst_em_count = 0;
+boolean ii_process_registers = false;
 
 // Run to this address and stop in fast mode
 int fast_to_address = -1;
@@ -463,8 +468,15 @@ INSTRUCTION instruction[256] =
 //
 struct Z80_REGISTERS
 {
-  uint16_t PC;
-  uint16_t AF;
+  uint16_t pc;
+  uint16_t sp;
+  uint16_t af;
+  uint16_t hl;
+  uint16_t de;
+  uint16_t bc;
+  uint16_t ix;
+  uint16_t iy;
+
 
   // Define the rest when we can do somthing with them
 };
@@ -796,6 +808,77 @@ void entry_mem1()
   // If it's a flash access then we will drive data if WR is asserted
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
+// Examine the II trace and find register values
+// This code is specific to the register dump II code, change one and the other needs
+// examination
+
+void get_register_values_from_trace()
+{
+  int i;
+  unsigned int twobyteval;
+  
+  for(i=0; i<TRACE_SIZE; i++)
+    {
+      // Speculatively calculate values
+      twobyteval = ii_trace[(i+2)%TRACE_SIZE].data + ((ii_trace[(i+1)%TRACE_SIZE].data) <<8);
+      switch(ii_trace[i].type)
+	{
+	case TRT_OP_RD:
+	  switch(ii_trace[i].data)
+	    {
+	      // This is the first instruction in the ii code, we can get the PC and SP from this instruction
+	    case 0xF5:     // PUSH AF
+	      // Send AF value
+	      Serial.print(F("^0AF:"));
+	      z80_registers.af = twobyteval;
+	      Serial.print( to_hex(z80_registers.af, 4) );
+	      Serial.print(F("$"));
+
+	      // get PC, it's the instruction address
+	      Serial.print(F("^0PC:"));
+	      z80_registers.pc = ii_trace[i].addr;;
+	      Serial.print( to_hex(z80_registers.pc, 4) );
+	      Serial.print(F("$"));
+
+	      // get SP, it's the address the first byte was written to plus 1
+	      Serial.print(F("^0SP:"));
+	      z80_registers.sp = ii_trace[(i+1)%TRACE_SIZE].addr+1;
+	      Serial.print( to_hex(z80_registers.sp, 4) );
+	      Serial.print(F("$"));
+	      break;
+
+	    case 0xE5:     // PUSH HL
+	      // Send HL value
+	      Serial.print(F("^0HL:"));
+	      z80_registers.hl = twobyteval;
+	      Serial.print( to_hex(z80_registers.hl, 4) );
+	      Serial.print(F("$"));
+	      break;
+
+	    case 0xC5:     // PUSH BC
+	      // Send BC value
+	      Serial.print(F("^0BC:"));
+	      z80_registers.bc = twobyteval;
+	      Serial.print( to_hex(z80_registers.bc, 4) );
+	      Serial.print(F("$"));
+	      break;
+
+	    case 0xD5:     // PUSH DE
+	      // Send DE value
+	      Serial.print(F("^0DE:"));
+	      z80_registers.de = twobyteval;
+	      Serial.print( to_hex(z80_registers.de, 4) );
+	      Serial.print(F("$"));
+	      break;
+	    }
+	  
+	  break;
+	}
+    }
+}
+
 unsigned int get_instruction_length(BYTE opcode)
 {
   int i;
@@ -817,6 +900,8 @@ unsigned int get_instruction_length(BYTE opcode)
   return(1);
 }
 
+// Inserts instructions between instructions
+
 void entry_core_ii_emulate()
 {
   Serial.print("II:");
@@ -828,6 +913,13 @@ void entry_core_ii_emulate()
       fast_mode = false;
       inter_inst = false;
       quiet = false;
+
+      // We have run the code between instructions, we may have to process the result
+      if( ii_process_registers )
+	{
+	  // Process trace to get register values
+	  get_register_values_from_trace();
+	}
       return;
     }
   
@@ -1011,7 +1103,7 @@ void reset_z80()
   // Release reset
   deassert_signal(SIG_RES);
 
-  z80_registers.PC = 0;
+  z80_registers.pc = 0;
   
 }
 
@@ -1524,25 +1616,6 @@ int signal_state(String signal)
   return(state);
 }
 
-void dump_z80_registers()
-{
-  if( quiet)
-    {
-      return;
-    }
-
-  //  Serial.println("\nZ80 Registers (which are known): ");
-  Serial.print(F("^0PC:"));
-  Serial.print( to_hex(z80_registers.PC, 4) );
-  Serial.print(F("$"));
-  Serial.print(F("^0AF:"));
-  Serial.print( to_hex(z80_registers.AF, 4) );
-  Serial.print(F("$"));
-  Serial.print(F("^0BC:"));
-  Serial.print( to_hex(z80_registers.PC+2, 4) );
-  Serial.print(F("$"));
-}
-
 void dump_misc_signals()
 {
   if( quiet)
@@ -1839,8 +1912,6 @@ void cmd_dump_signals()
   
   // Control signals on bus
   dump_misc_signals();
-
-  dump_z80_registers();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -2010,12 +2081,19 @@ const BYTE example_code_lcd_test[] =
   };
 
 //--------------------------------------------------------------------------------
-// Code that runs between instructions
+// Code that runs between instructions to dump registers
 
-const BYTE inter_inst_code_test[] =
+const BYTE inter_inst_code_regdump[] =
   {
-    0xf5, 0xe5, 0xe1, 0xf1,
-    0x18, 0xFA
+    0xf5,        // push af 
+    0xe5,        // push hl
+    0xd5,        // push de
+    0xc5,        // push bc
+    0xc1,        // pop bc
+    0xd1,        // pop de
+    0xe1,        // pop hl
+    0xf1,        // pop af
+    0x18, 0xF6   // jr start
   };
 
 
@@ -2160,7 +2238,7 @@ void cmd_trace_test_code(String cmd)
       //delay(5);
 
       if( signal_state("M1") == LOW )
-        z80_registers.PC = (uint16_t)addr_state();  
+        z80_registers.pc = (uint16_t)addr_state();  
 
       // Dump the status so we can see what's happening
       if ( !fast_mode )
@@ -2314,7 +2392,7 @@ void cmd_trace_test_code(String cmd)
 	  Serial.println(F("I:Mega take IO map           i:Hardware take IO map"));
 	  Serial.println(F("J:Mega take memory map       j:Hardware take memory map\n"));
 	  Serial.println(F("r:reset Z80"));
-	  Serial.println(F("1:assert reset               0:deassert reset             d:dump regs (coming soon!)"));
+	  Serial.println(F("1:assert reset               0:deassert reset\n"));
 	  Serial.println(F("b:Breakpoint                 B:Toggle breakpoint\n"));
 	  Serial.println(F("-:Display trace              =:Display II Trace\n"));
 	  Serial.println(F("return: drive half a clock   q:quit menu"));
@@ -2418,12 +2496,15 @@ void cmd_trace_test_code(String cmd)
 		      fast_mode = true;
 		      fast_mode_n = -1;
 		      inter_inst = true;
-		      inter_inst_code = inter_inst_code_test;
-		      inter_inst_code_length = sizeof(inter_inst_code_test);
+		      inter_inst_code = inter_inst_code_regdump;
+		      inter_inst_code_length = sizeof(inter_inst_code_regdump);
 		      inter_inst_index = 0;
 		      quiet = true;
 		      delay(100);
 		      cmdloop = false;
+
+		      // When completed, get register values
+		      ii_process_registers = true;
 		      break;
 
 		    case 'b':

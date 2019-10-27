@@ -4,6 +4,8 @@
 #
 #
 
+set ::REGISTER_LIST {PC SP AF BC DE HL AFt BCt DEt HLt IX IY}
+
 set device   [lindex $argv 0]
 
 puts "Opening $device"
@@ -213,19 +215,78 @@ proc send_ihx_file_dialog {} {
 proc data0 {data} {
     puts "**data 0 : '$data' **"
     set w .data.0.text
-    switch -regexp $data {
-	"PC:...." {
-	    $w delete 1.0 1.end
-	    $w insert 1.0 "$data"
+    
+    set i 1
+    foreach {register} $::REGISTER_LIST {
+	if { [regexp -- "$register:...." $data] } {
+	    $w delete $i.0 $i.end
+	    $w insert $i.0 "$data"
 	}
-	"AF:...." {
-	    $w delete 2.0 2.end
-	    $w insert 2.0 "$data"
+
+	incr i 1
+    }
+    
+    if {0} {
+	switch -regexp $data {
+	    "PC:...." {
+		$w delete 1.0 1.end
+		$w insert 1.0 "$data"
+	    }
+	    "AF:...." {
+		$w delete 2.0 2.end
+		$w insert 2.0 "$data"
+	    }
+	    "BC:...." {
+		$w delete 3.0 3.end
+		$w insert 3.0 "$data"
+	    }
+	    "DE:...." {
+		$w delete 4.0 4.end
+		$w insert 4.0 "$data"
+	    }
+	    "HL:...." {
+		$w delete 5.0 5.end
+		$w insert 5.0 "$data"
+	    }
+	    "IX:...." {
+		$w delete 6.0 6.end
+		$w insert 6.0 "$data"
+	    }
+	    "IY:...." {
+		$w delete 7.0 7.end
+		$w insert 7.0 "$data"
+	    }
+	    "SP:...." {
+		$w delete 8.0 8.end
+		$w insert 8.0 "$data"
+	    }
+	    
+	    "AFt:...." {
+		$w delete 10.0 10.end
+		$w insert 10.0 "$data"
+	    }
+	    "BCt:...." {
+		$w delete 11.0 11.end
+		$w insert 11.0 "$data"
+	    }
+	    "DEt:...." {
+		$w delete 12.0 12.end
+		$w insert 12.0 "$data"
+	    }
+	    "HLt:...." {
+		$w delete 13.0 13.end
+		$w insert 13.0 "$data"
+	    }
+	    "IXt:...." {
+		$w delete 14.0 14.end
+		$w insert 14.0 "$data"
+	    }
+	    "IYt:...." {
+		$w delete 15.0 15.end
+		$w insert 15.0 "$data"
+	    }
 	}
-	"BC:...." {
-	    $w delete 3.0 3.end
-	    $w insert 3.0 "$data"
-	}
+	
     }
 }
 
@@ -284,7 +345,11 @@ pack .t -side top -fill both -expand true
 # Open register value display window
 open_data_channel_window .data.0
 pack .data.0 -side top -fill both -expand true
-.data.0.text  insert end "PC:0000\nAF:0000\nBC:0000"
+
+foreach {register} $::REGISTER_LIST {
+    .data.0.text  insert end "$register:....\n"
+}
+
 
 # Drop into event loop...
 write_data "\n"
