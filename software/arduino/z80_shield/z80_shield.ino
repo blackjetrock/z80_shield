@@ -61,6 +61,8 @@ const BYTE instruction_length[] =
 
 // Inserting code between instructions
 boolean inter_inst = false;
+boolean inter_inst_trace = false;
+
 BYTE *inter_inst_code = NULL;
 unsigned int inter_inst_index = 0;
 unsigned int inter_inst_code_length = 0;
@@ -277,11 +279,13 @@ char *textify_trace_rec(int i, TRACE_REC *trace)
   return(trace_rec_buf);
 }
 
+// Trace into he appropriate buffer
+
 void trace_rec(TRACE_REC_TYPE trt)
 {
   if ( trace_on )
     {
-      if( inter_inst )
+      if( inter_inst_trace )
 	{
 	  ii_trace[ii_trace_index].type = trt;
 	  ii_trace[ii_trace_index].data = data_state();
@@ -297,6 +301,14 @@ void trace_rec(TRACE_REC_TYPE trt)
 	  trace_index++;
 	  trace_index = trace_index % TRACE_SIZE;
 	}
+
+      // Turn off ii tracing if ii is off. This is for an edge condition as we turn ii off (we want to trace the last
+      // bus transfer, but we have turned ii off before we trace)
+      if ( !inter_inst )
+	{
+	  inter_inst_trace = false;
+	}
+      
     }
 }
 
@@ -906,23 +918,7 @@ void entry_core_ii_emulate()
 {
   Serial.print("II:");
   Serial.println(inter_inst_em_count);
-  
-  if ( inter_inst_index >= inter_inst_code_length )
-    {
-      // End of inter inst code
-      fast_mode = false;
-      inter_inst = false;
-      quiet = false;
 
-      // We have run the code between instructions, we may have to process the result
-      if( ii_process_registers )
-	{
-	  // Process trace to get register values
-	  get_register_values_from_trace();
-	}
-      return;
-    }
-  
   inter_inst_em_count--;
   
   // We get data from our emulated code whatever the address
@@ -942,12 +938,30 @@ void entry_core_ii_emulate()
   Serial.print(inter_inst_code[inter_inst_index], HEX);
 
   inter_inst_index++;
+
+  if ( inter_inst_index >= inter_inst_code_length )
+    {
+      // End of inter inst code, turn everything off
+      // We do, however want to trace this transfer in the ii_trace buffer so leave the ii_trace flag set until the next iteration
+      fast_mode = false;
+      inter_inst = false;
+      quiet = false;
+
+      // We have run the code between instructions, we may have to process the result
+      if( ii_process_registers )
+	{
+	  // Process trace to get register values
+	  get_register_values_from_trace();
+	}
+      return;
+    }
+  
 }
 
 // Memory read cycle
 void entry_mem_rd()
 {
-  // Instruction data bytes  come rom flash (or perhaps emulated by mega unless we are inserting code between instructions
+  // Instruction data bytes  come from flash (or perhaps emulated by mega unless we are inserting code between instructions
   // then we get code from the inter_inst array until it runs out
    // have we stopped emulating the instruction?
   if( inter_inst_em_count == 0 )
@@ -2496,6 +2510,7 @@ void cmd_trace_test_code(String cmd)
 		      fast_mode = true;
 		      fast_mode_n = -1;
 		      inter_inst = true;
+		      inter_inst_trace = true;
 		      inter_inst_code = inter_inst_code_regdump;
 		      inter_inst_code_length = sizeof(inter_inst_code_regdump);
 		      inter_inst_index = 0;
