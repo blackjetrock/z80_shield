@@ -2315,7 +2315,8 @@ void cmd_trace_test_code(String cmd)
 	  Serial.println(F("J:Mega take memory map       j:Hardware take memory map\n"));
 	  Serial.println(F("r:reset Z80"));
 	  Serial.println(F("1:assert reset               0:deassert reset             d:dump regs (coming soon!)"));
-	  Serial.println(F("b:Breakpoint                 B:Toggle breakpoint          -:display trace\n"));
+	  Serial.println(F("b:Breakpoint                 B:Toggle breakpoint\n"));
+	  Serial.println(F("-:Display trace              =:Display II Trace\n"));
 	  Serial.println(F("return: drive half a clock   q:quit menu"));
 
 #if ENABLE_TIMINGS
