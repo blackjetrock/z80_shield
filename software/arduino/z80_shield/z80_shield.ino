@@ -411,9 +411,9 @@ enum
     SIG_M1,
     SIG_MREQ,
     SIG_IOREQ,
+    SIG_RFSH,
     SIG_WR,
     SIG_RD,
-    SIG_RFSH,
     SIG_NMI,
     SIG_INT,
     SIG_WAIT,
@@ -1305,12 +1305,13 @@ BYTE read_cycle(int address, int signal)
 
   // Assert required signals
   assert_signal(signal);
-  assert_signal(SIG_RD);
 
+  assert_signal(SIG_RD);
+  
   // Clock again
   t_state();
   t_state();
-
+  
   // read data
   data_bus_inputs();
   data = data_state();
