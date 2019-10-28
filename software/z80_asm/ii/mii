@@ -1,5 +1,0 @@
-#zcc +embedded -v -compiler sdcc -startup=0 --no-crt --c-code-in-asm -no-cleanup --list test.c ../pio/z80_shield_pio.c -o z80_shield_lcd -clib=new --std-c11 -create-app -Cz"--rombase=0x0000 --romsize=0x8000 --ihex"
-
-#../scripts//z80_convert.tcl lcdtest.z80.lst example_code_lcd_test ../arduino/z80_shield/z80_shield.ino
-#touch ../arduino/z80_shield/z80_shield.ino
-zcc +embedded -v --no-crt   -o ii -subtype=none -create-app -Cz"+hex --ihex --clean" ii.asm

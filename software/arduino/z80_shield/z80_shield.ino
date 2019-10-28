@@ -42,6 +42,11 @@ boolean opcode_traced = false;
 
 const BYTE instruction_length[] =
   {
+    0xdd, 1,
+    0xed, 1,
+    0xfd, 1,
+    0x22, 3,
+    0x43, 3,
     0xf5, 1,
     0xf1, 1,
     0xe5, 1,
@@ -2110,16 +2115,38 @@ const BYTE example_code_lcd_test[] =
 
 const BYTE inter_inst_code_regdump[] =
   {
-    0xf5,        // push af 
-    0xe5,        // push hl
-    0xd5,        // push de
-    0xc5,        // push bc
-    0xc1,        // pop bc
-    0xd1,        // pop de
-    0xe1,        // pop hl
-    0xf1,        // pop af
-    0x18, 0xF6   // jr start
+    0xF5,
+    0xE5,
+    0xC5,
+    0xD5,
+    0xD1,
+    0xC1,
+    0xE1,
+    0xF1,
+    0x18,
+    0xF6,
   };
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 //--------------------------------------------------------------------------------
@@ -3251,6 +3278,27 @@ void loop()
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
