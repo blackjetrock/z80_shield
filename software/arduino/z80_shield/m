@@ -1,3 +1,5 @@
 # Embeds all the code into the sketch
 zcc +embedded -v --no-crt   -o ii -subtype=none -create-app -Cz"+hex --ihex --clean" ../../z80_asm/ii/ii.asm
 ../../scripts/ihx_convert.tcl ii.ihx inter_inst_code_regdump ../../arduino/z80_shield/z80_shield.ino
+zcc +embedded -v --no-crt   -o lcdtest -subtype=none -create-app -Cz"+hex --ihex --clean" ../../z80_asm/lcdtest.asm
+../../scripts/ihx_convert.tcl lcdtest.ihx  example_code_lcd_test ../../arduino/z80_shield/z80_shield.ino
