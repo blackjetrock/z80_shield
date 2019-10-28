@@ -32,6 +32,10 @@ boolean fast_mode = false;       // Skip all output and interaction
 // Stop if M1 asserted (used for running to next instruction
 boolean stop_on_m1 = false;
 
+// Flag is set when opcode is traced, and cleared when M1 is asserted
+// This is used to make the 'next instruction' commad work more intuitively
+boolean opcode_traced = false;
+
 // Array that tells us how long an instrcution is, for every opcode
 // Used in inter instruction code execution
 // Not array of struct so it stays in flash
@@ -529,7 +533,8 @@ void entry_opcode3()
 // If we are stopping when M1 asserted then stop
 void entry_opcode1()
 {
-  if ( stop_on_m1 )
+  
+  if ( stop_on_m1 && opcode_traced )
     {
       if ( (fast_to_address == -1) || ((fast_to_address != -1) && (fast_to_address == addr_state())) )
 	{
@@ -540,12 +545,18 @@ void entry_opcode1()
 	  stop_on_m1 = false;
 	}
     }
+
+  // New opcode, so clear the opcode traced flag as this opcode hasn't been
+  opcode_traced = false;
+
 }
 
 void entry_trc_op()
 {
   // Trace opcode
   trace_rec(TRT_OP_RD);
+
+  opcode_traced = true;
 }
 
 const STATE bsm[] =
@@ -2482,6 +2493,13 @@ void cmd_trace_test_code(String cmd)
 		      stop_on_m1 = true;
 		      fast_to_address = -1;
 		      cmdloop = false;
+
+		      // Turn off the flag that indicates that an opcoe has been traced. This means that
+		      // we will only stop on M1 if a new instruction opcode (and bus transfers for that instruction as we stop
+		      // on M1) has been traced. This has the effect of making the 'next command' drive the bus until a new
+		      // instruction has been traced. This is a more intuitive behaviour than driving to M1 as that might
+		      // only drive until a half completed instruction has finsihed and not trace anything.
+		      opcode_traced = false;
 		      break;
 
 		    case 'c':
