@@ -1,0 +1,3 @@
+z80asm -l flash_lcd.z80 &> flash_lcd.z80.lst
+./z80_convert.tcl flash_lcd.z80.lst example_code_lcd_bl_flash z80_shield.ino
+touch z80_shield.ino

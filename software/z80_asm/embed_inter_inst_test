@@ -1,0 +1,4 @@
+
+;zcc +z80 -v --no-crt -clib=sdcc_iy test.asm -o test -subtype=none -create-app -Cz"+glue --ihex --clean"
+
+zcc +z80 -v --no-crt  inter_inst_test.asm -o inter_inst_test -subtype=none -create-app -Cz"+glue --ihex --clean"
