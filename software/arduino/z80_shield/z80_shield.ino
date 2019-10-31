@@ -2785,6 +2785,7 @@ const BYTE example_code_lcd_test[] =
   };
 
 
+
 //--------------------------------------------------------------------------------
 // Code that runs between instructions to dump registers
 
@@ -2801,6 +2802,7 @@ const BYTE inter_inst_code_regdump[] =
     0x18,
     0xF6,
   };
+
 
 
 
@@ -3955,6 +3957,8 @@ void loop()
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+
+
 
 
 
