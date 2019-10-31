@@ -1,3 +1,0 @@
-z80asm -l lcdtest.z80 &> lcdtest.z80.lst
-./z80_convert.tcl lcdtest.z80.lst example_code_lcd_test z80_shield.ino
-touch z80_shield.ino

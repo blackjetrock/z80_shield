@@ -1,3 +1,4 @@
+
 #include "z80_shield_pio.h"
 
 int lcd_a_shadow = 0;
@@ -7,7 +8,7 @@ int lcd_b_shadow = 0;
 void lcd_rs_low(void)
 {
   lcd_b_shadow &= 0xfe;
-  outp(IO_ADDR_PIO1+PIO_B_DATA, lcd_b_shadow);
+  IO_PIO1_B_DATA, lcd_b_shadow);
 }
 
 void lcd_e_low(void)

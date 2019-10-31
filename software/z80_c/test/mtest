@@ -1,2 +1,3 @@
-zcc +embedded -v -compiler sdcc -startup=0 --no-crt --c-code-in-asm -no-cleanup --list test.c -o test -clib=new --std-c11
+#zcc +embedded -v -compiler sdcc -startup=0 --no-crt --c-code-in-asm -no-cleanup --list test.c -o test -clib=new --std-c11
+zcc +embedded -v -compiler sdcc -startup=0  --c-code-in-asm -no-cleanup --list test.c -o test -clib=new --std-c11
 appmake +hex --org 0 -b test

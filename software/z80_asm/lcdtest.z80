@@ -15,17 +15,21 @@ AD_CS:	           EQU  01H
 AD_CLK:	           EQU  02H
 AD_DIN:	           EQU  04H		
 AD_DOUT:	   EQU  08H
-	
+
+        SECTION SHADOW
 	ORG     0A000H
 	
-SHADOW_A:     DB    1
-SHADOW_B:     DB    1
-SHADOW_AD:     DB    1
+SHADOW_A:     DEFB    1
+SHADOW_B:     DEFB    1
+SHADOW_AD:    DEFB    1
 
-	ORG  0B000H
-ADS0:	       DB    2
-ADS1:	       DB    2
+        SECTION AD
 	
+	ORG  0B000H
+ADS0:	       DEFB    2
+ADS1:	       DEFB    2
+
+        SECTION CODE
 	ORG 0
 
 START:	LD  SP, 9000H

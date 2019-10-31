@@ -23,4 +23,8 @@
 *.txt
 *.rom
 *.bin
+*.pdf
+*-
+*.map
+*.jpg
 zcc_opt.def
