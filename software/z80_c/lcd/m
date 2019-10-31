@@ -1,0 +1,1 @@
+zcc +z80 -a -v -compiler sdcc -clib=sdcc_iy -startup=1 --c-code-in-asm -no-cleanup --list z80_shield_lcd.c ../pio/z80_shield_pio.c -o z80_shield_lcd -clib=new --std-c11 -create-app -Cz"--ihex --romsize=0x8000"
