@@ -25,6 +25,7 @@
 *.bin
 *.pdf
 *-
+*.o
 *.map
 *.jpg
 zcc_opt.def
