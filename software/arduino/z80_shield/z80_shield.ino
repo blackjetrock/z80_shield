@@ -3445,10 +3445,14 @@ void upload_to_bank(int bank)
 	  ascii_address[4] = '\0';
 	  sscanf(ascii_address, "%x", &address);
 
-	  Serial.print(F("Address:"));
-	  Serial.println(ascii_address);
-	  Serial.print(F("Length:"));
-	  Serial.println(length);
+	  // Don't display debug for speed
+	  if ( 1 )
+	    {
+	      Serial.print(F("Address:"));
+	      Serial.println(ascii_address);
+	      Serial.print(F("Length:"));
+	      Serial.println(length);
+	    }
 	  
 	  if ( length == 0 )
 	    {
@@ -3910,7 +3914,7 @@ void setup()
   digitalWrite(SW0_Pin, HIGH);
   digitalWrite(SW1_Pin, LOW);
 
-  // initialize serial communication at 9600 bits per second:
+  // initialize serial communication
   Serial.begin(115200);
 
   for(int i=0; i<24; i++ )

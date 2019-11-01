@@ -112,6 +112,8 @@ proc open_data_channel_window {w} {
 #
 
 proc send_ihx_file {filename f} {
+
+    set start_clock [clock seconds]
     
     # Read the hex file
     
@@ -148,25 +150,22 @@ proc send_ihx_file {filename f} {
 	if { [string length $tx ] == 0 } {
 	    set done 1
 	} else {
-	    puts "Flushed '$tx '"
+	    #	    puts "Flushed '$tx '"
 	}
     }
     
     puts "Sending $filename"
-    
+    set i 0
     foreach line [split $txt "\n"] {
 	if { [string length $line] == 0 } {
 	    break
 	}
-	
 	# We terminate line with a '-'
-	puts "Sending line '$line'"
 	puts $f "$line-"
 	flush $f
 	
 	# Wait for a '+' that signals the next line can be sent
 	set rx_tick 0
-	puts "Waiting for tick"
 	
 	while {!$rx_tick} {
 	    
@@ -174,14 +173,21 @@ proc send_ihx_file {filename f} {
 	    
 	    if { [string length $rdata] > 0 } {
 		if { [string first "+" $rdata] != -1 } {
-		    puts "Got '$rdata'"
 		    # Tick received, move on
 		    set rx_tick 1
-		    
 		}
 	    }
 	}
+
+	incr i 1
+	if { [expr ($i % 100)==0] } {
+	    puts "Sent $i lines..."
+	}
     }
+    set end_clock [clock seconds]
+
+    set elapsed [expr $end_clock - $start_clock]
+    puts "Elapsed time:$elapsed"
 }
 
 ####################################################################################################
