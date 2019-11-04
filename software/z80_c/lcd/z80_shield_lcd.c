@@ -104,6 +104,11 @@ void lcd_initialise(void)
 
 }
 
+void lcd_cursor_line_col(int line, int col)
+{
+  lcd_send_s_data_8bits(0x80 + 0x40*line + col);
+}
+
 void lcd_display(char *text)
 {
     while(*text != '\0' )
