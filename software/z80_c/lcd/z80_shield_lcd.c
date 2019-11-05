@@ -1,6 +1,10 @@
 
 #include "../pio/z80_shield_pio.h"
 
+#define FULL_SPEED 1
+
+void lcd_delay(void);
+
 int lcd_a_shadow = 0;
 int lcd_b_shadow = 0;
 
@@ -33,53 +37,100 @@ void lcd_send_s_data_4bits(char data)
 {
   lcd_rs_low();
   lcd_e_high();
+#if FULL_SPEED
+  lcd_delay();
+#endif
+  
   IO_PIO1_A_DATA = (data << 4) & 0xf0;
+
+#if FULL_SPEED
+  lcd_delay();
+#endif
+
   lcd_e_low();
   lcd_rs_high();
+
+#if FULL_SPEED
+  lcd_delay();
+#endif
 }
 
 void lcd_send_s_data_8bits(char data)
 {
   lcd_rs_low();
   lcd_e_high();
+#if FULL_SPEED
+  lcd_delay();
+#endif
 
   IO_PIO1_A_DATA =  data;
+#if FULL_SPEED
+  lcd_delay();
+#endif
   lcd_e_low();
   lcd_e_high();
+#if FULL_SPEED
+  lcd_delay();
+#endif
   
   IO_PIO1_A_DATA = (data << 4) & 0xf0;
+#if FULL_SPEED
+  lcd_delay();
+#endif
+
   lcd_e_low();
   lcd_rs_high();
+
+#if FULL_SPEED
+  lcd_delay();
+#endif
 }
 
 void lcd_send_d_data_8bits(char data)
 {
   lcd_rs_high();
   lcd_e_high();
+#if FULL_SPEED
+  lcd_delay();
+#endif
 
   IO_PIO1_A_DATA =  data;
+#if FULL_SPEED
+  lcd_delay();
+#endif
   lcd_e_low();
   lcd_e_high();
+#if FULL_SPEED
+  lcd_delay();
+#endif
   
   IO_PIO1_A_DATA =(data << 4) & 0xf0;
+#if FULL_SPEED
+  lcd_delay();
+#endif
   lcd_e_low();
   lcd_rs_high();
+#if FULL_SPEED
+  lcd_delay();
+#endif
 }
 
 
-void lcd_delay(int delay)
+void lcd_delay(void)
 {
   volatile int i,j;
 
   // Uncomment for running under Mega clocking
-    return;
-  for(i=0;i<delay;i++)
-    {
-        for(j=0;j<10000;j++)
-	  {
-	  }
-    }
   
+#if FULL_SPEED
+#else
+  
+  return;
+#endif
+  
+  for(j=0;j<50;j++)
+    {
+    }
 }
 
 void lcd_initialise(void)
@@ -91,7 +142,7 @@ void lcd_initialise(void)
   
   lcd_rs_low();
   lcd_e_low();
-  lcd_delay(1);
+  lcd_delay();
   
   lcd_send_s_data_4bits(0x03);
   lcd_send_s_data_4bits(0x03);
