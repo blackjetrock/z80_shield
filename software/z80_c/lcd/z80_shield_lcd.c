@@ -69,9 +69,10 @@ void lcd_send_d_data_8bits(char data)
 
 void lcd_delay(int delay)
 {
-  int i,j;
+  volatile int i,j;
 
-  return;
+  // Uncomment for running under Mega clocking
+    return;
   for(i=0;i<delay;i++)
     {
         for(j=0;j<10000;j++)

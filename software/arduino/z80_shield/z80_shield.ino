@@ -3126,6 +3126,8 @@ void cmd_trace_test_code(String cmd)
 	  Serial.println(F("1:assert reset               0:deassert reset\n"));
 	  Serial.println(F("b:Breakpoint                 B:Toggle breakpoint\n"));
 	  Serial.println(F("-:Display trace              =:Display II Trace\n"));
+	  Serial.println(F("X:Assert INT x:desaart INT   Y:Assert NMI  y:Deassert NMI\n"));
+
 	  Serial.println(F("return: drive half a clock   q:quit menu"));
 
 #if ENABLE_TIMINGS
@@ -3351,7 +3353,23 @@ void cmd_trace_test_code(String cmd)
 			    }
 			}
 		      break;
-		  
+
+		    case 'X':
+		      assert_signal(SIG_INT);
+		      break;
+
+		    case 'x':
+		      deassert_signal(SIG_INT);
+		      break;
+		      
+		    case 'Y':
+		      assert_signal(SIG_NMI);
+		      break;
+
+		    case 'y':
+		      deassert_signal(SIG_NMI);
+		      break;
+		      
 		    case '\r':
 		      cmdloop = false;
 		      break;
