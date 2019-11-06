@@ -229,8 +229,19 @@ proc data0 {data} {
     set i 1
     foreach {register} $::REGISTER_LIST {
 	if { [regexp -- "$register:...." $data] } {
-	    $w delete $i.0 $i.end
-	    $w insert $i.0 "$data"
+
+	    # We have the line number for this register's data
+	    # Get the data and insert it so we have a history of register values
+	    if { [regexp -- "$register:(\[0-9a-fA-F\]+)" $data all value] } {
+		
+		set current_string [$w get $i.0 $i.end]
+		puts "<$current_string>"
+		if { [string length $current_string] > 20 } {
+		    $w delete "$i.end - 5 chars" $i.end
+		}
+		$w insert $i.4 "$value "
+		
+	    }
 	}
 
 	incr i 1
