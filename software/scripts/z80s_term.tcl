@@ -4,7 +4,7 @@
 #
 #
 
-set ::REGISTER_LIST {PC SP AF BC DE HL AFt BCt DEt HLt IX IY}
+set ::REGISTER_LIST {"PC " "SP " "AF " "BC " "DE " "HL " "AF'" "BC'" "DE'" "HL'" "IX " "IY " "I  " "R  "}
 
 set device   [lindex $argv 0]
 
@@ -92,10 +92,10 @@ proc read_data {f} {
 
 toplevel .data
 
-proc open_data_channel_window {w} {
+proc open_data_channel_window {w width height} {
     
     frame $w
-    text $w.text -xscrollcommand [list $w.xscroll set] -yscrollcommand [list $w.yscroll set] -width 80 -height 25
+    text $w.text -xscrollcommand [list $w.xscroll set] -yscrollcommand [list $w.yscroll set] -width $width -height $height
     scrollbar $w.xscroll -orient horizontal -command [list $w.text xview]
     scrollbar $w.yscroll -orient vertical -command [list $w.text yview]
     grid $w.text $w.yscroll -sticky news
@@ -217,6 +217,10 @@ proc send_ihx_file_dialog {} {
 #
 
 # Register value window
+#
+# We store a history for each register
+#
+set ::REGISTER_FORMAT "%-3s: .... ....\n"
 
 proc data0 {data} {
     puts "**data 0 : '$data' **"
@@ -238,15 +242,15 @@ proc data0 {data} {
 		$w delete 1.0 1.end
 		$w insert 1.0 "$data"
 	    }
-	    "AF:...." {
+	    "AF :...." {
 		$w delete 2.0 2.end
 		$w insert 2.0 "$data"
 	    }
-	    "BC:...." {
+	    "BC :...." {
 		$w delete 3.0 3.end
 		$w insert 3.0 "$data"
 	    }
-	    "DE:...." {
+	    "DE :...." {
 		$w delete 4.0 4.end
 		$w insert 4.0 "$data"
 	    }
@@ -267,32 +271,37 @@ proc data0 {data} {
 		$w insert 8.0 "$data"
 	    }
 	    
-	    "AFt:...." {
+	    "AF':...." {
 		$w delete 10.0 10.end
 		$w insert 10.0 "$data"
 	    }
-	    "BCt:...." {
+	    "BC':...." {
 		$w delete 11.0 11.end
 		$w insert 11.0 "$data"
 	    }
-	    "DEt:...." {
+	    "DE':...." {
 		$w delete 12.0 12.end
 		$w insert 12.0 "$data"
 	    }
-	    "HLt:...." {
+	    "HL':...." {
 		$w delete 13.0 13.end
 		$w insert 13.0 "$data"
 	    }
-	    "IXt:...." {
-		$w delete 14.0 14.end
-		$w insert 14.0 "$data"
-	    }
-	    "IYt:...." {
-		$w delete 15.0 15.end
-		$w insert 15.0 "$data"
-	    }
 	}
-	
+    }
+}
+
+####################################################################################################
+#
+
+proc display_registers {} {
+    # Open register value display window
+    open_data_channel_window .data.0 20 20
+    pack .data.0 -side top -fill both -expand true
+    
+    foreach {register} $::REGISTER_LIST {
+	set t [format $::REGISTER_FORMAT $register]
+	.data.0.text  insert end "$t"
     }
 }
 
@@ -305,7 +314,7 @@ proc open_terminal_window {w} {
     frame $w
     eval {text $w.text \
 	      -xscrollcommand [list $w.xscroll set] \
-	      -yscrollcommand [list $w.yscroll set]} -width 135 -height 40
+	      -yscrollcommand [list $w.yscroll set]} -width 135 -height 50
     scrollbar $w.xscroll -orient horizontal \
 	-command [list $w.text xview]
     scrollbar $w.yscroll -orient vertical \
@@ -348,14 +357,7 @@ proc open_terminal_window {w} {
 open_terminal_window .t
 pack .t -side top -fill both -expand true
 
-# Open register value display window
-open_data_channel_window .data.0
-pack .data.0 -side top -fill both -expand true
-
-foreach {register} $::REGISTER_LIST {
-    .data.0.text  insert end "$register:....\n"
-}
-
+display_registers
 
 # Drop into event loop...
 write_data "\n"

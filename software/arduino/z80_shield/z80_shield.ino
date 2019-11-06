@@ -13,6 +13,7 @@
 #define ENABLE_DIRECT_PORT_ACCESS   1
 #define ENABLE_TIMINGS              0
 #define TRACE_SIZE                 40
+#define II_TRACE_SIZE              80
 
 typedef unsigned char BYTE;
 typedef void (*FPTR)();
@@ -29,8 +30,19 @@ unsigned int data_state();
 boolean quiet = false;
 boolean fast_mode = false;       // Skip all output and interaction
 
+// Set if the opcode of this bus cycle is a prefix type (does not work in injected code sequences)
+boolean prefix_opcode = false;
+
+const BYTE prefix_opcodes[] = {0xdd, 0xfd, 0xed };
+
+#define NUM_PREFIX_OPCODES (sizeof(prefix_opcodes))
+  
 // Stop if M1 asserted (used for running to next instruction
 boolean stop_on_m1 = false;
+
+// Stop on full instruction
+// Stops once a full instruction, i.e. not just a prefix type opcode has executed
+boolean stop_on_full_instruction = false;
 
 // Flag is set when opcode is traced, and cleared when M1 is asserted
 // This is used to make the 'next instruction' commad work more intuitively
@@ -42,27 +54,39 @@ boolean opcode_traced = false;
 
 const BYTE instruction_length[] =
   {
-    0xdd, 1,
-    0xed, 1,
-    0xfd, 1,
-    0x22, 3,
-    0x43, 3,
-    0xf5, 1,
-    0xf1, 1,
-    0xe5, 1,
-    0xe1, 1,
-    0xc1, 1,
-    0xc5, 1,
-    0xd1, 1,
-    0xd5, 1,
     0x18, 2,    // JR x
-    0x23, 1,
-    0x7e, 1,
-    0x77, 1,
-    0xc3, 3,
+
     0x21, 3,
+    0x22, 3,
+    0x23, 1,
+    
     0x3e, 2,
     0x31, 3,
+
+    0x43, 3,
+    
+    0x77, 1,
+    0x7e, 1,
+
+
+    0xc1, 1,
+    0xc3, 3,  // call
+    0xc5, 1,
+    
+    0xd1, 1,
+    0xd5, 1,
+    0xd9, 1,   // exx
+    0xdd, 1,   // prefix hl-> ix
+
+    0xe1, 1,    // pop  ix/iy/hl
+    0xe5, 1,    // push ix/iy/hl
+
+    0xed, 1,
+
+    0xf1, 1,
+    0xf5, 1,
+    0xfd, 1,   // prefix hl-> iy
+
     0x00, 1     // Both NOP and end of table
   };
 
@@ -249,7 +273,7 @@ int ii_trace_index = 0;
 TRACE_REC trace[TRACE_SIZE];
 
 // Inter Instruction bus trace
-TRACE_REC ii_trace[TRACE_SIZE];
+TRACE_REC ii_trace[II_TRACE_SIZE];
 
 char trace_rec_buf[40];
 
@@ -300,7 +324,7 @@ void trace_rec(TRACE_REC_TYPE trt)
 	  ii_trace[ii_trace_index].data = data_state();
 	  ii_trace[ii_trace_index].addr = addr_state();
 	  ii_trace_index++;
-	  ii_trace_index = ii_trace_index % TRACE_SIZE;
+	  ii_trace_index = ii_trace_index % II_TRACE_SIZE;
 	}
       else
 	{
@@ -497,6 +521,10 @@ struct Z80_REGISTERS
   uint16_t bc;
   uint16_t ix;
   uint16_t iy;
+  uint16_t afp;   // AF' or AF prime -> afp
+  uint16_t hlp;
+  uint16_t dep;
+  uint16_t bcp;
 
 
   // Define the rest when we can do somthing with them
@@ -538,8 +566,12 @@ void entry_opcode3()
 // If we are stopping when M1 asserted then stop
 void entry_opcode1()
 {
-  
-  if ( stop_on_m1 && opcode_traced )
+
+  // Only stop on every M1 if we aren't stopping on full instructions
+  // Full stopping on full instructions, we disallow stopping on M1 if the opcode is
+  // a prefix type
+   
+  if ( stop_on_m1 && opcode_traced && (stop_on_full_instruction && (!prefix_opcode)) )
     {
       if ( (fast_to_address == -1) || ((fast_to_address != -1) && (fast_to_address == addr_state())) )
 	{
@@ -846,59 +878,153 @@ void get_register_values_from_trace()
 {
   int i;
   unsigned int twobyteval;
+  int shift_opcode = 0x00;       // Holds last shift opcode
+  boolean exx_flag = false;      // Holds flag that says which register set we are using in our code
+  boolean grab_pc = true;        // Only use first PUSH AF to grab PC and SP
   
-  for(i=0; i<TRACE_SIZE; i++)
+  for(i=0; i<II_TRACE_SIZE; i++)
     {
       // Speculatively calculate values
-      twobyteval = ii_trace[(i+2)%TRACE_SIZE].data + ((ii_trace[(i+1)%TRACE_SIZE].data) <<8);
+      twobyteval = ii_trace[(i+2) % II_TRACE_SIZE].data + ((ii_trace[(i+1) % II_TRACE_SIZE].data) <<8);
       switch(ii_trace[i].type)
 	{
 	case TRT_OP_RD:
 	  switch(ii_trace[i].data)
 	    {
+	      // exx instruction
+	      // For register display (and code) the current register set is always the non prime one (no ')
+	      // The prime set (AF' etc) are always the ones you get after an exx instruction.
+	      // This makes sense as if you display the registers inside an ISR that has done an exx at the start then the
+	      // non prime register set is th eone you are working with and the saved context is the prime set
+	      // So, we don't need to know if the code that is running has done a previous exx
+	      // We do need to know when the code in the ii trace has done an exx though, as we need to
+	      // dipslay the values in the correct place
+	    case 0xD9:
+	      exx_flag = !exx_flag;
+	      break;
+	      
+	      // This is a shift opcode that indicates use IX instead of HL
+	    case 0xDD:
+	    case 0xFD:
+	      shift_opcode = ii_trace[i].data;
+	      break;
+	      
 	      // This is the first instruction in the ii code, we can get the PC and SP from this instruction
 	    case 0xF5:     // PUSH AF
 	      // Send AF value
-	      Serial.print(F("^0AF:"));
-	      z80_registers.af = twobyteval;
-	      Serial.print( to_hex(z80_registers.af, 4) );
-	      Serial.print(F("$"));
+	      if ( exx_flag )
+		{
+		  Serial.print(F("^0AF':"));
+		  z80_registers.afp = twobyteval;
+		  Serial.print( to_hex(z80_registers.afp, 4) );
+		  Serial.print(F("$"));
+		}
+	      else
+		{
+		  Serial.print(F("^0AF :"));
+		  z80_registers.af = twobyteval;
+		  Serial.print( to_hex(z80_registers.af, 4) );
+		  Serial.print(F("$"));
+		}
 
-	      // get PC, it's the instruction address
-	      Serial.print(F("^0PC:"));
-	      z80_registers.pc = ii_trace[i].addr;;
-	      Serial.print( to_hex(z80_registers.pc, 4) );
-	      Serial.print(F("$"));
-
-	      // get SP, it's the address the first byte was written to plus 1
-	      Serial.print(F("^0SP:"));
-	      z80_registers.sp = ii_trace[(i+1)%TRACE_SIZE].addr+1;
-	      Serial.print( to_hex(z80_registers.sp, 4) );
-	      Serial.print(F("$"));
+	      // Only get PC and SP for first PUSH AF
+	      if ( grab_pc )
+		{
+		  // get PC, it's the instruction address
+		  Serial.print(F("^0PC :"));
+		  z80_registers.pc = ii_trace[i].addr;;
+		  Serial.print( to_hex(z80_registers.pc, 4) );
+		  Serial.print(F("$"));
+		  
+		  // get SP, it's the address the first byte was written to plus 1
+		  Serial.print(F("^0SP :"));
+		  z80_registers.sp = ii_trace[(i+1) % II_TRACE_SIZE].addr+1;
+		  Serial.print( to_hex(z80_registers.sp, 4) );
+		  Serial.print(F("$"));
+		  grab_pc = false;
+		}
 	      break;
-
+	      
+	    case 0xE1:
+	      // we don't process the pop ix.iy, but need to clear the flags
+	      shift_opcode = 0x00;
+	      break;
+	      
 	    case 0xE5:     // PUSH HL
-	      // Send HL value
-	      Serial.print(F("^0HL:"));
-	      z80_registers.hl = twobyteval;
-	      Serial.print( to_hex(z80_registers.hl, 4) );
-	      Serial.print(F("$"));
+	      switch(shift_opcode)
+		{
+		case 0x00:    // No previous shift opcode		  
+		  // Send HL value
+		  if ( exx_flag )
+		    {
+		      Serial.print(F("^0HL':"));
+		      z80_registers.hlp = twobyteval;
+		      Serial.print( to_hex(z80_registers.hlp, 4) );
+		      Serial.print(F("$"));
+		    }
+		  else
+		    {
+		      Serial.print(F("^0HL :"));
+		      z80_registers.hl = twobyteval;
+		      Serial.print( to_hex(z80_registers.hl, 4) );
+		      Serial.print(F("$"));
+		    }
+		  break;
+		  
+		case 0xDD:
+		  // Send IX value
+		  Serial.print(F("^0IX :"));
+		  z80_registers.ix = twobyteval;
+		  Serial.print( to_hex(z80_registers.ix, 4) );
+		  Serial.print(F("$"));
+		  shift_opcode = 0x00; 
+		  break;
+		  
+		case 0xFD:
+		  // Send IY value
+		  Serial.print(F("^0IY :"));
+		  z80_registers.iy = twobyteval;
+		  Serial.print( to_hex(z80_registers.iy, 4) );
+		  Serial.print(F("$"));
+		  shift_opcode = 0x00; 
+		  break;
+		}
 	      break;
 
 	    case 0xC5:     // PUSH BC
 	      // Send BC value
-	      Serial.print(F("^0BC:"));
-	      z80_registers.bc = twobyteval;
-	      Serial.print( to_hex(z80_registers.bc, 4) );
-	      Serial.print(F("$"));
+	      if (exx_flag )
+		{
+		  Serial.print(F("^0BC':"));
+		  z80_registers.bcp = twobyteval;
+		  Serial.print( to_hex(z80_registers.bcp, 4) );
+		  Serial.print(F("$"));
+		}
+	      else
+		{
+		  Serial.print(F("^0BC :"));
+		  z80_registers.bc = twobyteval;
+		  Serial.print( to_hex(z80_registers.bc, 4) );
+		  Serial.print(F("$"));
+		}
 	      break;
 
 	    case 0xD5:     // PUSH DE
 	      // Send DE value
-	      Serial.print(F("^0DE:"));
-	      z80_registers.de = twobyteval;
-	      Serial.print( to_hex(z80_registers.de, 4) );
-	      Serial.print(F("$"));
+	      if (exx_flag )
+		{
+		  Serial.print(F("^0DE':"));
+		  z80_registers.dep = twobyteval;
+		  Serial.print( to_hex(z80_registers.dep, 4) );
+		  Serial.print(F("$"));
+		}
+	      else
+		{
+		  Serial.print(F("^0DE :"));
+		  z80_registers.de = twobyteval;
+		  Serial.print( to_hex(z80_registers.de, 4) );
+		  Serial.print(F("$"));
+		}
 	      break;
 	    }
 	  
@@ -1019,6 +1145,8 @@ void entry_mem_rd()
 // Memory read cycle
 void entry_op_rd()
 {
+  int i;
+  
   // Opcodes come rom flash (or perhaps emulated by mega unless we are inserting code between instructions
   // then we get code from the inter_inst array until it runs out
   if ( inter_inst && (inter_inst_code != NULL) )
@@ -1028,6 +1156,21 @@ void entry_op_rd()
       entry_core_ii_emulate();
       
     }
+  else
+    {
+      prefix_opcode = false;
+      
+      // For non-injected instructions we set a flag if this is a prefix opcode
+      for(i=0; i<NUM_PREFIX_OPCODES;i++)
+	{
+	  if ( data_state() == prefix_opcodes[i] )
+	    {
+	      prefix_opcode = true;
+	      break;
+	    }
+	}
+    }
+  
 }
 
 
@@ -2786,6 +2929,9 @@ const BYTE example_code_lcd_test[] =
 
 
 
+
+
+
 //--------------------------------------------------------------------------------
 // Code that runs between instructions to dump registers
 
@@ -2795,13 +2941,34 @@ const BYTE inter_inst_code_regdump[] =
     0xE5,
     0xC5,
     0xD5,
+    0xDD,
+    0xE5,
+    0xFD,
+    0xE5,
+    0xFD,
+    0xE1,
+    0xDD,
+    0xE1,
     0xD1,
     0xC1,
     0xE1,
     0xF1,
+    0xD9,
+    0xF5,
+    0xE5,
+    0xC5,
+    0xD5,
+    0xD1,
+    0xC1,
+    0xE1,
+    0xF1,
+    0xD9,
     0x18,
-    0xF6,
+    0xE4,
   };
+
+
+
 
 
 
@@ -3006,6 +3173,7 @@ void cmd_trace_test_code(String cmd)
       int maprqm = signal_state("MAPRQM");
       int last_addr = -1;
 #endif
+      int trace_size;
       
       if ( (rd == HIGH) )
 	{
@@ -3202,12 +3370,18 @@ void cmd_trace_test_code(String cmd)
 		      fast_to_address = -1;
 		      cmdloop = false;
 
-		      // Turn off the flag that indicates that an opcoe has been traced. This means that
+		      // Turn off the flag that indicates that an opcode has been traced. This means that
 		      // we will only stop on M1 if a new instruction opcode (and bus transfers for that instruction as we stop
 		      // on M1) has been traced. This has the effect of making the 'next command' drive the bus until a new
 		      // instruction has been traced. This is a more intuitive behaviour than driving to M1 as that might
-		      // only drive until a half completed instruction has finsihed and not trace anything.
+		      // only drive until a half completed instruction has finished and not trace anything.
 		      opcode_traced = false;
+
+		      // We want to stop on a full instruction, i.e. not after a prefix instruction. This is so the
+		      // injected code (between instruction) is only executed when ther eis no outstanding prefix
+		      // opcode
+		      
+		      stop_on_full_instruction = true;
 		      break;
 
 		    case 'c':
@@ -3330,17 +3504,20 @@ void cmd_trace_test_code(String cmd)
 
 		    case '-':
 		    case '=':
+
 		      // Display trace data
 		      if (trace_cmd.charAt(0)=='=')
 			{
+			  trace_size = II_TRACE_SIZE;
 			  Serial.println(F("Inter Instruction Trace"));
 			}
 		      else
 			{
+			  trace_size = TRACE_SIZE;
 			  Serial.println(F("Trace"));
 			}
 		      
-		      for(int i=0; i<TRACE_SIZE;i++)
+		      for(int i=0; i<trace_size;i++)
 			{
 			  Serial.print(textify_trace_rec(i, (trace_cmd.charAt(0)=='=')?ii_trace: trace));
 			  if ( i == ((trace_cmd.charAt(0)=='=')?ii_trace_index: trace_index) )
@@ -3979,6 +4156,12 @@ void loop()
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+
+
+
+
+
+
 
 
 
