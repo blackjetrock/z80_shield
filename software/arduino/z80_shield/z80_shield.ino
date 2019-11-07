@@ -32,6 +32,10 @@ unsigned int data_state();
 boolean quiet = false;
 boolean fast_mode = false;       // Skip all output and interaction
 
+// Some command must not be interrupted, some can be, some have to be (like 'f')
+// The command must handle the setting and clearing of this flag
+boolean uninterruptible_command = false;
+
 // Set if the opcode of this bus cycle is a prefix type (does not work in injected code sequences)
 boolean prefix_opcode = false;
 
@@ -1090,6 +1094,8 @@ void entry_core_ii_emulate()
       // We do, however want to trace this transfer in the ii_trace buffer so leave the ii_trace flag set until the next iteration
       fast_mode = false;
       inter_inst = false;
+      uninterruptible_command = false;
+      
       quiet = false;
 
       // We have run the code between instructions, we may have to process the result
@@ -3098,6 +3104,7 @@ void cmd_trace_test_code(String cmd)
   (void)cmd;
   boolean running = true;
   unsigned long start, end;
+
   
 #ifdef __UNUSED_CODE__
   int cycle_type = CYCLE_NONE;
@@ -3258,7 +3265,7 @@ void cmd_trace_test_code(String cmd)
 #endif
 	    }
 
-	  if ( Serial.available()>0 )
+	  if ( (!uninterruptible_command) && (Serial.available() > 0) )
 	    {
 	      // Turn fast mode off if there's a keypress
 	      fast_mode = false;
@@ -3424,6 +3431,7 @@ void cmd_trace_test_code(String cmd)
 		      inter_inst_code_length = sizeof(inter_inst_code_regdump);
 		      inter_inst_index = 0;
 		      quiet = true;
+		      uninterruptible_command = true;
 		      delay(100);
 		      cmdloop = false;
 
