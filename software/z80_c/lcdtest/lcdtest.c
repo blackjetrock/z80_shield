@@ -33,9 +33,10 @@ int main(void)
   while(1)
     {
       lcd_cursor_line_col(1,0);
-      sprintf(x, "%03d", z80_shield_ctc_read(0));
-      //sprintf(x, "%03d", y);
+      //sprintf(x, "%03d", z80_shield_ctc_read(0));
+      sprintf(x, "%03d", y++);
       lcd_display(x);
+      
     }
   
   // Sit in loop when we are done

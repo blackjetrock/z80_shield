@@ -33,7 +33,7 @@ boolean fast_mode = false;       // Skip all output and interaction
 // Set if the opcode of this bus cycle is a prefix type (does not work in injected code sequences)
 boolean prefix_opcode = false;
 
-const BYTE prefix_opcodes[] = {0xdd, 0xfd, 0xed };
+const BYTE prefix_opcodes[] = {0xdd, 0xfd, 0xed, 0xcb };
 
 #define NUM_PREFIX_OPCODES (sizeof(prefix_opcodes))
   
@@ -54,6 +54,7 @@ boolean opcode_traced = false;
 
 const BYTE instruction_length[] =
   {
+    0x08, 1,    // EX AF,AF'
     0x18, 2,    // JR x
 
     0x21, 3,
@@ -1058,8 +1059,8 @@ unsigned int get_instruction_length(BYTE opcode)
 
 void entry_core_ii_emulate()
 {
-  Serial.print("II:");
-  Serial.println(inter_inst_em_count);
+  //Serial.print("II:");
+  //Serial.println(inter_inst_em_count);
 
   inter_inst_em_count--;
   
@@ -1073,11 +1074,11 @@ void entry_core_ii_emulate()
   set_data_state(inter_inst_code[inter_inst_index]);
   
   
-  Serial.print(F("Putting ii data on bus "));
-  Serial.print(addr_state(), HEX);
-  Serial.print(" ");
-  Serial.print(data_state(), HEX);
-  Serial.print(inter_inst_code[inter_inst_index], HEX);
+  //Serial.print(F("Putting ii data on bus "));
+  //Serial.print(addr_state(), HEX);
+  //Serial.print(" ");
+  //Serial.print(data_state(), HEX);
+  //Serial.print(inter_inst_code[inter_inst_index], HEX);
 
   inter_inst_index++;
 
@@ -2932,6 +2933,7 @@ const BYTE example_code_lcd_test[] =
 
 
 
+
 //--------------------------------------------------------------------------------
 // Code that runs between instructions to dump registers
 
@@ -2953,6 +2955,7 @@ const BYTE inter_inst_code_regdump[] =
     0xC1,
     0xE1,
     0xF1,
+    0x08,
     0xD9,
     0xF5,
     0xE5,
@@ -2963,9 +2966,11 @@ const BYTE inter_inst_code_regdump[] =
     0xE1,
     0xF1,
     0xD9,
+    0x08,
     0x18,
-    0xE4,
+    0xE2,
   };
+
 
 
 
@@ -4156,6 +4161,8 @@ void loop()
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+
+
 
 
 

@@ -221,6 +221,7 @@ proc send_ihx_file_dialog {} {
 # We store a history for each register
 #
 set ::REGISTER_FORMAT "%-3s: .... ....\n"
+set ::MAX_REG_LINE 120
 
 proc data0 {data} {
     puts "**data 0 : '$data' **"
@@ -236,11 +237,31 @@ proc data0 {data} {
 		
 		set current_string [$w get $i.0 $i.end]
 		puts "<$current_string>"
-		if { [string length $current_string] > 20 } {
+		if { [string length $current_string] > $::MAX_REG_LINE } {
 		    $w delete "$i.end - 5 chars" $i.end
 		}
 		$w insert $i.4 "$value "
-		
+		set new_string [$w get $i.0 $i.end]
+
+		# Highlight differences
+		set first_value_flag 1
+		for {set x 4} {$x < $::MAX_REG_LINE} {incr x 5} {
+		    # Get value
+		    set value [$w get $i.$x "$i.$x + 4 chars"]
+
+		    if { $first_value_flag } {
+			set first_value_flag 0
+		    } else {
+			puts "==$last_value $value=="
+			if { $value != $last_value } {
+			    puts "*"
+			    $w tag add    tag_$i\_$x\_chg $i.$lastx "$i.$lastx + 4 chars" 
+			    $w tag config tag_$i\_$x\_chg -foreground red
+			}
+		    }
+		    set lastx $x
+		    set last_value $value
+		}
 	    }
 	}
 
@@ -307,7 +328,7 @@ proc data0 {data} {
 
 proc display_registers {} {
     # Open register value display window
-    open_data_channel_window .data.0 20 20
+    open_data_channel_window .data.0 150 20
     pack .data.0 -side top -fill both -expand true
     
     foreach {register} $::REGISTER_LIST {

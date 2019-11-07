@@ -20,6 +20,7 @@ start:
 	pop  af
 
 	;;  Alternate register set
+	ex   af, af'
 	exx
 	push af
 	push hl
@@ -30,6 +31,7 @@ start:
 	pop  hl
 	pop  af
 	exx
+	ex   af, af'
 
 	;;  restore PC
 	jr start
