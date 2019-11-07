@@ -12,6 +12,8 @@
 #define ENABLE_MEGA_ROM_EMULATION   0
 #define ENABLE_DIRECT_PORT_ACCESS   1
 #define ENABLE_TIMINGS              0
+#define ENABLE_LOCAL_ECHO           0
+
 #define TRACE_SIZE                 40
 #define II_TRACE_SIZE              80
 
@@ -3323,10 +3325,12 @@ void cmd_trace_test_code(String cmd)
               char c = Serial.read();
               trace_cmd += c;
 
+#if ENABLE_LOCAL_ECHO
               // Echo back key
               //
               Serial.print( c ); Serial.flush();
-
+#endif
+	      
 	      if( c == '\n' || c == '\r' )
 		{
 		  //Serial.print("Action ");
@@ -3763,10 +3767,11 @@ void cmd_memory(String cmd)
           char c = Serial.read();
           memory_cmd += c;
 
+#if ENABLE_LOCAL_ECHO	  
           // Echo back key
           //
           Serial.print( c ); Serial.flush();
-
+#endif
           if( c == '\n' || c == '\r' )
 	    {
 #if ENABLE_TIMINGS
@@ -3986,10 +3991,12 @@ void run_monitor()
       //
       c = Serial.read();
 
+#if ENABLE_LOCAL_ECHO      
       // Echo back key
       //
       Serial.print( c ); Serial.flush();
-
+#endif
+      
       switch(c)
 	{
 	case '\r':
