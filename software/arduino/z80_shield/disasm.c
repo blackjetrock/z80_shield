@@ -6,22 +6,116 @@
 #define false 0
 #define true (!false)
 
+#define ENDIAN_SWAP(x) (((x&0xff)<<8)+((x&0xff00)>>8))
+
 char *desc[] =
   {
+    "01rrrsss 'LD r,s'",
+    "00rrr110 nn 'LD r, n'",
     "00pp0001 nn nn 'LD p, n'",
-    "2A nn nn 'LD HL,(n)'",
-    "FD 21 nn nn 'LD IY, n'",
+    "2A nn nn 'LD HL,(nn)'",
     "D9 'EXX'",
-    "DD 11001011 dd 01bbb110 'BIT b, (IX+d)'",
-    "CD 11001011 dd 01bbb110 'BIT b, (IY+d)'",
+    "11y11101 11001011 dd 01bbb110 'BIT b, (y+d)'",
     "11qq0101 'PUSH q'",
     "11qq0001 'POP q'",
-    "DD E5 'PUSH IX'",
-    "FD E5 'PUSH IY'",
-    "DD E1 'POP IX'",
-    "FD E1 'POP IY'",
+    "11y11101 E5 'PUSH y'",
+    "11y11101 E1 'POP  y'",
     "08 'EX AF, AF'",
+    
     "18 ee 'JR e'",
+    "20 ee 'JR NZ, e'",
+    "28 ee 'JR Z, e'",
+    "30 ee 'JR NC, e'",
+    "38 ee 'JR C, e'",
+
+    "C9 'RET'",
+    "CD nn nn 'CALL nn'",
+    "11ccc100 nn nn 'CALL cc, nn'",
+    "00110010 nn nn 'LD (nn), A'",
+    "ED 57 'LD A,I'",
+    "ED 5F 'LD, A,R'",
+    "ED 47 'LD I,A'",
+    "ED 4F 'LD R,A'",
+    "12 'LD (DE),A'",
+    "02 'LD (BC),A'",
+    "1A 'LD A,(DE)'",
+    "0A 'LD A,(BC)'",
+    "11y11101 00110110 dd nn 'LD (y+d), n'",
+    "00110110 nn 'LD (HL), n'",
+    "11y11101 01110rrr dd 'LD (y+d), r'",
+    "01110rrr 'LD (HL), r'",
+    "01rrr110 'LD r, (HL)'",
+    "11y11101 01rrr110 dd 'LD r, (y+d)'",
+    "00pp0001 nn nn 'LD p, nn'",
+    "11y11101 21 nn nn 'LD y, nn'",
+    "2A nn nn 'LD HL, (nn)'",
+    "ED 01pp1011 nn nn 'LD p, (nn)'",
+    "11y11101 2A nn nn 'LD y, (nn)'",
+    "22 nn nn 'LD (nn), HL'",
+    "ED 01pp0011 nn nn 'LD (nn), p'",
+    "11y11101 22 nn nn 'LD (nn), y'",
+    "F9 'LD SP, HL'",
+    "11y11101 'LD SP, y'",
+
+    "10000rrr 'ADD A, r'",
+    "11000110 nn 'ADD A, n'",
+    "11y11101 86 dd 'ADD A, (y+d)'",
+
+    "10001rrr 'ADC A, r'",
+    "11001110 nn 'ADC A, n'",
+    "11y11101 8E dd 'ADC A, (y+d)'",
+
+    "10010rrr 'SUB r'",
+    "11010110 nn 'SUB n'",
+    "11y11101 96 dd 'SUB (y+d)'",
+
+    "10011rrr 'SBC A, r'",
+    "11011110 nn 'SBC A, n'",
+    "11y11101 9E dd 'SBC A, (y+d)'",
+
+    "10100rrr 'AND r'",
+    "11100110 nn 'AND n'",
+    "11y11101 A6 dd 'AND (y+d)'",
+    
+    "10110rrr 'OR r'",
+    "11110110 nn 'OR n'",
+    "11y11101 B6 dd 'OR (y+d)'",
+
+    "10101rrr 'XOR r'",
+    "11101110 nn 'XOR n'",
+    "11y11101 AE dd 'XOR (y+d)'",
+
+    "10111rrr 'CP r'",
+    "11111110 nn 'CP n'",
+    "11y11101 BE dd 'CP (y+d)'",
+
+    "00rrr100 'INC r'",
+    "11y11101 34 dd 'INC (y+d)'",
+
+    "00rrr101 'DEC r'",
+    "11y11101 35 dd 'DEC (y+d)'",
+
+    "27 'DAA'",
+    "2F 'CPL'",
+    "ED 44 'NEG'",
+    "3F 'CCF'",
+    "37 'SCF'",
+    "00 'NOP'",
+    "76 'HALT'"
+    "F3 'DI'",
+    "FB 'EI'",
+    "ED 46 'IM 0'",
+    "ED 56 'IM 1'",
+    "ED 5E 'IM 2'",
+    "00pp1001 'ADD HL, p'",
+    "ED 01pp1010 'ADC HL, p'",
+    "ED 01pp0010 'SBC HL, p'",
+    "DD 00pp1001 'SBC HL, px'",
+    "FD 00pp1001 'SBC HL, py'",
+    "00pp0011 'INC p'",
+    "11y11101 23 'INC y'",
+    "00pp1011 'DEC p'",
+    "11y11101 2B 'DEC y'",
     
     NULL,
   };
@@ -30,7 +124,7 @@ char *desc[] =
 
 unsigned char bytes[] = {
   0xdd, 0xcb, 0x23, 0x6e,
-  0xcd, 0xcb, 0x23, 0x6e,
+  0xfd, 0xcb, 0x23, 0x6e,
   0xF5, 0xE5, 0xC5, 0xD5, 0xDD, 0xE5, 0xFD, 0xE5,
   0xFD, 0xE1, 0xDD, 0xE1, 0xD1, 0xC1, 0xE1, 0xF1, 
   0x08, 0xD9, 0xF5, 0xE5, 0xC5, 0xD5, 0xD1, 0xC1,
@@ -515,12 +609,68 @@ char * desc_decode(char *desc, unsigned char *bytes)
 	    {
 	      switch(fields[field_i].name)
 		{
-		case 'd':
+		  
 		case 'b':
 		case 'e':
-		case 'n':
-		  sprintf(field_val, "%X", fields[field_i].value);
+		  sprintf(field_val, "%02XH", fields[field_i].value);
 		  strcat(decode_string, field_val);
+		  break;
+
+		case 'c':
+		  // c or cc show condition code
+		  if( fmt_str[i+1] == 'c' )
+		    {
+		      i++;
+		    }
+		  switch(fields[field_i].value)
+		    {
+		    case 0:
+		      strcat(decode_string, "NZ");
+		      break;
+		    case 1:
+		      strcat(decode_string, "Z");
+		      break;
+		    case 2:
+		      strcat(decode_string, "NC");
+		      break;
+		    case 3:
+		      strcat(decode_string, "C");
+		      break;
+		    case 4:
+		      strcat(decode_string, "PO");
+		      break;
+		    case 5:
+		      strcat(decode_string, "PE");
+		      break;
+		    case 6:
+		      strcat(decode_string, "P");
+		      break;
+		    case 7:
+		      strcat(decode_string, "M");
+		      break;
+		    }
+		  
+
+		  break;
+
+		case 'n':
+		case 'd':
+		  // n is 8 bit
+		  // nn is 16 bit
+		  // dn shouldn't be used, but would be 16 bit
+		  if( fmt_str[i+1] == 'n' )
+		    {
+		      // Endian swap
+		      
+		      sprintf(field_val, "%04XH", ENDIAN_SWAP(fields[field_i].value));
+		      strcat(decode_string, field_val);
+		      i++;
+		    }
+		  else
+		    {
+		      sprintf(field_val, "%02XH", fields[field_i].value);
+		      strcat(decode_string, field_val);
+		    }
 		  break;
 
 		case 'q':
@@ -541,6 +691,51 @@ char * desc_decode(char *desc, unsigned char *bytes)
 		    }
 		  break;
 
+		case 'r':
+		case 's':
+		  switch(fields[field_i].value)
+		    {
+		    case 0:
+		      strcat(decode_string, "B");
+		      break;
+		    case 1:
+		      strcat(decode_string, "C");
+		      break;
+		    case 2:
+		      strcat(decode_string, "D");
+		      break;
+		    case 3:
+		      strcat(decode_string, "E");
+		      break;
+		    case 4:
+		      strcat(decode_string, "H");
+		      break;
+		    case 5:
+		      strcat(decode_string, "L");
+		      break;
+		    case 6:
+		      strcat(decode_string, "(HL)");
+		      break;
+		    case 7:
+		      strcat(decode_string, "A");
+		      break;
+		    }
+		  break;
+
+		  // IY is 1 bit
+
+		case 'y':
+		  switch(fields[field_i].value)
+		    {
+		    case 0:
+		      strcat(decode_string, "IX");
+		      break;
+		    case 1:
+		      strcat(decode_string, "IY");
+		      break;
+		    }
+		  break;
+		  
 		case 'p':
 		  switch(fields[field_i].value)
 		    {
@@ -551,7 +746,24 @@ char * desc_decode(char *desc, unsigned char *bytes)
 		      strcat(decode_string, "DE");
 		      break;
 		    case 2:
-		      strcat(decode_string, "HL");
+// If next char is x or y then modify
+		      switch( fmt_str[i+1] )
+			{
+			case 'x':
+			  strcat(decode_string, "IX");
+			  i++;
+			  break;
+
+			case 'y':
+			  strcat(decode_string, "IY");
+			  i++;
+			  break;
+
+			default:
+			  strcat(decode_string, "HL");
+			  break;
+			}
+
 		      break;
 		    case 3:
 		      strcat(decode_string, "SP");
@@ -582,12 +794,13 @@ char disasm_str[10000];
 // Length prefixed bytes
 void disasm(unsigned char *bytes, int num_bytes)
 {
-  int i;
+  int i, j;
   int num_match = 0;
   int total_matched = 0;
   unsigned char *start = bytes;
   boolean any_match;
-
+  char byte_str[3] = "..";
+  
   disasm_str[0] = '\0';
   
   while( bytes < (start+num_bytes) )
@@ -613,8 +826,22 @@ void disasm(unsigned char *bytes, int num_bytes)
 	      desc_decode(desc[i], bytes);
 	      
 	      total_matched += num_match;
-	      bytes += num_match;
+
 	      strcat(disasm_str, "\n");
+	      
+	      for(j=0; j<num_match; j++)
+		{
+		  sprintf(byte_str, "%02X", *(bytes+j));
+		  strcat(disasm_str, " ");
+		  strcat(disasm_str, byte_str);
+		}
+	      
+	      for(; j<6; j++)
+		{
+		  strcat(disasm_str, "   ");
+		}
+	      
+	      bytes += num_match;	      
 	      strcat(disasm_str, decode_string);
 	      break;
 	    }
