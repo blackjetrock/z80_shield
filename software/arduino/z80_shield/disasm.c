@@ -10,113 +10,200 @@
 
 char *desc[] =
   {
-    "01rrrsss 'LD r,s'",
-    "00rrr110 nn 'LD r, n'",
-    "00pp0001 nn nn 'LD p, n'",
-    "2A nn nn 'LD HL,(nn)'",
-    "D9 'EXX'",
-    "11y11101 11001011 dd 01bbb110 'BIT b, (y+d)'",
-    "11qq0101 'PUSH q'",
-    "11qq0001 'POP q'",
-    "11y11101 E5 'PUSH y'",
-    "11y11101 E1 'POP  y'",
-    "08 'EX AF, AF'",
+
+    // 8 bit load
+    "01rrrsss :LD r,s:",
+    "00rrr110 nn :LD r, n:",
+    "01rrr110 :LD r, (HL):",
+    "11y11101 01rrr110 dd :LD r, (y+d):",
+    "01110rrr :LD (HL), r:",
+    "11y11101 01110rrr dd :LD (y+d), r:",
+
+    "00pp0001 nn nn :LD p, n:",
+    "2A nn nn :LD HL,(nn):",
+    "00110110 nn :LD (HL), n:",    
+    "11y11101 00110110 dd nn :LD (y+d), n:",
+    "02 :LD (BC),A:",
+    "12 :LD (DE),A:",
+    "3A nn nn :LD A, (nn):",
+    "1A :LD A,(DE):",
+    "0A :LD A,(BC):",
+    "32 nn nn :LD (nn), A:",
     
-    "18 ee 'JR e'",
-    "20 ee 'JR NZ, e'",
-    "28 ee 'JR Z, e'",
-    "30 ee 'JR NC, e'",
-    "38 ee 'JR C, e'",
+    "ED 57 :LD A,I:",
+    "ED 5F :LD, A,R:",
+    "ED 47 :LD I,A:",
+    "ED 4F :LD R,A:",
 
-    "C9 'RET'",
-    "CD nn nn 'CALL nn'",
-    "11ccc100 nn nn 'CALL cc, nn'",
-    "00110010 nn nn 'LD (nn), A'",
-    "ED 57 'LD A,I'",
-    "ED 5F 'LD, A,R'",
-    "ED 47 'LD I,A'",
-    "ED 4F 'LD R,A'",
-    "12 'LD (DE),A'",
-    "02 'LD (BC),A'",
-    "1A 'LD A,(DE)'",
-    "0A 'LD A,(BC)'",
-    "11y11101 00110110 dd nn 'LD (y+d), n'",
-    "00110110 nn 'LD (HL), n'",
-    "11y11101 01110rrr dd 'LD (y+d), r'",
-    "01110rrr 'LD (HL), r'",
-    "01rrr110 'LD r, (HL)'",
-    "11y11101 01rrr110 dd 'LD r, (y+d)'",
-    "00pp0001 nn nn 'LD p, nn'",
-    "11y11101 21 nn nn 'LD y, nn'",
-    "2A nn nn 'LD HL, (nn)'",
-    "ED 01pp1011 nn nn 'LD p, (nn)'",
-    "11y11101 2A nn nn 'LD y, (nn)'",
-    "22 nn nn 'LD (nn), HL'",
-    "ED 01pp0011 nn nn 'LD (nn), p'",
-    "11y11101 22 nn nn 'LD (nn), y'",
-    "F9 'LD SP, HL'",
-    "11y11101 'LD SP, y'",
+    // 16 bit load
+    "00pp0001 nn nn :LD p, nn:",
+    "11y11101 21 nn nn :LD y, nn:",
+    "2A nn nn :LD HL, (nn):",
+    "ED 01pp1011 nn nn :LD p, (nn):",
+    "11y11101 2A nn nn :LD y, (nn):",
+    "22 nn nn :LD (nn), HL:",
+    "ED 01pp0011 nn nn :LD (nn), p:",
+    "11y11101 22 nn nn :LD (nn), y:",
+    "F9 :LD SP, HL:",
+    "11y11101 :LD SP, y:",
+    "11qq0101 :PUSH q:",
+    "11qq0001 :POP q:",
+    "11y11101 E5 :PUSH y:",
+    "11y11101 E1 :POP  y:",
 
-    "10000rrr 'ADD A, r'",
-    "11000110 nn 'ADD A, n'",
-    "11y11101 86 dd 'ADD A, (y+d)'",
+    // Exchange, block transfer and search
+    "EB :EX DE, HL:",
+    "08 :EX AF, AF':",
+    "D9 :EXX:",
+    "E3 :EX (SP), HL:",
+    "11y11101 E3 :EX(y), HL:",
+    "ED A0 :LDI:",
+    "ED B0 :LDIR:",
+    "ED A8 :LDD:",
+    "ED B8 :LDDR:",
+    "ED A1 :CPI:",
+    "ED B1 :CPIR:",
+    "ED A9 :CPD:",
+    "ED B9 :CPDR:",
 
-    "10001rrr 'ADC A, r'",
-    "11001110 nn 'ADC A, n'",
-    "11y11101 8E dd 'ADC A, (y+d)'",
+    // 8 bit arithmetic
+    "10000rrr :ADD A, r:",
+    "11000110 nn :ADD A, n:",
+    "86 :ADD A, (HL):",
+    "11y11101 86 dd :ADD A, (y+d):",
 
-    "10010rrr 'SUB r'",
-    "11010110 nn 'SUB n'",
-    "11y11101 96 dd 'SUB (y+d)'",
+    "10001rrr :ADC A, r:",
+    "11001110 nn :ADC A, n:",
+    "11y11101 8E dd :ADC A, (y+d):",
 
-    "10011rrr 'SBC A, r'",
-    "11011110 nn 'SBC A, n'",
-    "11y11101 9E dd 'SBC A, (y+d)'",
+    "10010rrr :SUB r:",
+    "11010110 nn :SUB n:",
+    "11y11101 96 dd :SUB (y+d):",
 
-    "10100rrr 'AND r'",
-    "11100110 nn 'AND n'",
-    "11y11101 A6 dd 'AND (y+d)'",
+    "10011rrr :SBC A, r:",
+    "11011110 nn :SBC A, n:",
+    "11y11101 9E dd :SBC A, (y+d):",
+
+    "10100rrr :AND r:",
+    "11100110 nn :AND n:",
+    "11y11101 A6 dd :AND (y+d):",
     
-    "10110rrr 'OR r'",
-    "11110110 nn 'OR n'",
-    "11y11101 B6 dd 'OR (y+d)'",
+    "10110rrr :OR r:",
+    "11110110 nn :OR n:",
+    "11y11101 B6 dd :OR (y+d):",
 
-    "10101rrr 'XOR r'",
-    "11101110 nn 'XOR n'",
-    "11y11101 AE dd 'XOR (y+d)'",
+    "10101rrr :XOR r:",
+    "11101110 nn :XOR n:",
+    "11y11101 AE dd :XOR (y+d):",
 
-    "10111rrr 'CP r'",
-    "11111110 nn 'CP n'",
-    "11y11101 BE dd 'CP (y+d)'",
+    "10111rrr :CP r:",
+    "11111110 nn :CP n:",
+    "11y11101 BE dd :CP (y+d):",
 
-    "00rrr100 'INC r'",
-    "11y11101 34 dd 'INC (y+d)'",
-
-    "00rrr101 'DEC r'",
-    "11y11101 35 dd 'DEC (y+d)'",
-
-    "27 'DAA'",
-    "2F 'CPL'",
-    "ED 44 'NEG'",
-    "3F 'CCF'",
-    "37 'SCF'",
-    "00 'NOP'",
-    "76 'HALT'"
-    "F3 'DI'",
-    "FB 'EI'",
-    "ED 46 'IM 0'",
-    "ED 56 'IM 1'",
-    "ED 5E 'IM 2'",
-    "00pp1001 'ADD HL, p'",
-    "ED 01pp1010 'ADC HL, p'",
-    "ED 01pp0010 'SBC HL, p'",
-    "DD 00pp1001 'SBC HL, px'",
-    "FD 00pp1001 'SBC HL, py'",
-    "00pp0011 'INC p'",
-    "11y11101 23 'INC y'",
-    "00pp1011 'DEC p'",
-    "11y11101 2B 'DEC y'",
+    "00rrr100 :INC r:",
+    "11y11101 34 dd :INC (y+d):",
     
+    "00rrr101 :DEC r:",
+    "11y11101 35 dd :DEC (y+d):",
+
+    // General purpose arithmetic and CPU control
+    "27 :DAA:",
+    "2F :CPL:",
+    "ED 44 :NEG:",
+    "3F :CCF:",
+    "37 :SCF:",
+    "00 :NOP:",
+    "76 :HALT:"
+    "F3 :DI:",
+    "FB :EI:",
+    "ED 46 :IM 0:",
+    "ED 56 :IM 1:",
+    "ED 5E :IM 2:",
+
+    // 16 bit arithmetic
+    "00pp1001 :ADD HL, p:",
+    "ED 01pp1010 :ADC HL, p:",
+    "ED 01pp0010 :SBC HL, p:",
+    "DD 00pp1001 :SBC HL, px:",
+    "FD 00pp1001 :SBC HL, py:",
+    "00pp0011 :INC p:",
+    "11y11101 23 :INC y:",
+    "00pp1011 :DEC p:",
+    "11y11101 2B :DEC y:",
+
+    // Rotate and shift
+    "07 :RLCA:",
+    "17 :RLA:",
+    "0F :RRCA:",
+    "1F :RRA:",
+    "CB 00000rrr :RLC r:",
+    "11y11101 CB dd 06 :RLC (y+d):",
+
+    "CB 00010rrr :RL r:",
+    "11y11101 CB dd 16 :RL (y+d):",
+
+    "CB 00001rrr :RRC r:",
+    "11y11101 CB dd 0E :RRC (y+d):",
+    
+    "CB 00011rrr :RR r:",
+    "11y11101 CB dd 1E :RR (y+d):",
+
+    "CB 00100rrr :SLA r:",
+    "11y11101 CB dd 26 :SLA (y+d):",
+
+    "CB 00101rrr :SRA r:",
+    "11y11101 CB dd 2E :SRA (y+d):",
+
+    "CB 001!1rrr :SRL r:",
+    "11y11101 CB dd 3E :SRL (y+d):",
+
+    "ED 6F :RLD:",
+    "ED 67 :RRD:",
+
+    // Bit set, reset and test
+    "CB 01bbbrrr :BIT b, r:",
+    "11y11101 CB dd 01bbb110 :BIT b, (y+d):",
+    "CB 11bbbrrr :SET b, r:",
+    "11y11101 CB dd 01bbb110 :SET b, (y+d):",
+    "CB 10bbbrrr :RES b, r:",
+    "11y11101 CB dd 10bbb110 :RES b, (y+d):",
+
+    // Jump
+    "C3 nn nn :JP nn:",
+    "11ccc010 nn nn :JP c, nn:",
+    "18 ee :JR e:",
+    "38 ee :JR C, e:",
+    "30 ee :JR NC, e:",
+    "28 ee :JR Z, e:",
+    "20 ee :JR NZ, e:",
+    "E9 :JP (HL):",
+    "11y11101 E9 :JP(y):",
+    "10 ee :DJNZ e:",
+    "38 ee :JR C, e:",
+
+    // Call and return
+    "CD nn nn :CALL nn:",
+    "11ccc100 nn nn :CALL cc, nn:",
+    "C9 :RET:",
+    "11ccc000 :RET c:",
+    "ED 4D :RETI:",
+    "ED 45 :RETN:",
+    "11ttt111 :RST t:",
+
+    // Input and output
+    "DB nn :IN A, (n):",
+    "ED 01rrr000 :IN r, (C):",
+    "ED A2 :INI:",
+    "ED B2 :INIR:",
+    "ED AA :IND:",
+    "ED BA :INDR:",
+    "D3 nn :OUT (n), A:",
+    "ED 01rrr001 :OUT (C), r:",
+    "ED A3 :OUTI:",
+    "ED B3 :OTIR:",
+    "ED AB :OUTD:",
+    "ED BB :OTDR:",
+
     NULL,
   };
 
@@ -124,6 +211,7 @@ char *desc[] =
 
 unsigned char bytes[] = {
   0xdd, 0xcb, 0x23, 0x6e,
+  0xff, 0xc7,
   0xfd, 0xcb, 0x23, 0x6e,
   0xF5, 0xE5, 0xC5, 0xD5, 0xDD, 0xE5, 0xFD, 0xE5,
   0xFD, 0xE1, 0xDD, 0xE1, 0xD1, 0xC1, 0xE1, 0xF1, 
@@ -497,7 +585,7 @@ boolean desc_match(char *desc, unsigned char *bytes)
       switch(*desc)
 	{
 
-	case '\'':
+	case ':':
 	  // If we get the string marker then all bytes have to have matched
 	  if( !all_match )
 	    {
@@ -582,7 +670,7 @@ char * desc_decode(char *desc, unsigned char *bytes)
     {
       switch(*(desc+i))
 	{
-	case '\'':
+	case ':':
 	  // Get the format string
 	  strcpy(fmt_str, desc+i+1);
 	  fmt_str[strlen(desc+i)-2] = '\0';
@@ -611,8 +699,17 @@ char * desc_decode(char *desc, unsigned char *bytes)
 		{
 		  
 		case 'b':
+		  sprintf(field_val, "%d", fields[field_i].value);
+		  strcat(decode_string, field_val);
+		  break;
+		  
 		case 'e':
 		  sprintf(field_val, "%02XH", fields[field_i].value);
+		  strcat(decode_string, field_val);
+		  break;
+
+		case 't':
+		  sprintf(field_val, "%02XH", fields[field_i].value*8);
 		  strcat(decode_string, field_val);
 		  break;
 
