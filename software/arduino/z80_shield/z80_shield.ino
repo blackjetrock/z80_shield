@@ -3,9 +3,9 @@
 // Serial monitor based control program
 //
 
-//#include <stdio.h>
-//#include <string.h>
-//#include <ctype.h>
+#include <stdio.h>
+#include <string.h>
+#include <ctype.h>
 
 // If you enable this, the Mega will supply data from its own internal buffer when the Z80
 // reads bytes from the ROM (i.e. Flash). Turn it off for the flash to supply the bytes, in
@@ -15,6 +15,9 @@
 #define ENABLE_DIRECT_PORT_ACCESS   1
 #define ENABLE_TIMINGS              0
 #define ENABLE_LOCAL_ECHO           0
+#define ENABLE_DISASM               0
+#define ENABLE_DISASM_TRACE         0
+#define ENABLE_DISASM_CMD           0
 
 #define TRACE_SIZE                 40
 #define II_TRACE_SIZE              80
@@ -29,6 +32,7 @@ void run_bsm(int stim);
 String bsm_state_name();
 unsigned int addr_state();
 unsigned int data_state();
+void disasm(unsigned char *bytes, int num_bytes);
 
 // Run in quiet mode
 boolean quiet = false;
@@ -285,6 +289,9 @@ TRACE_REC trace[TRACE_SIZE];
 TRACE_REC ii_trace[II_TRACE_SIZE];
 
 char trace_rec_buf[40];
+BYTE instruction_bytes[10];
+int inst_bytes_i = 0;
+#define MAX_INST_BYTES (sizeof(instruction_bytes))
 
 char *textify_trace_rec(int i, TRACE_REC *trace)
 {
@@ -294,6 +301,12 @@ char *textify_trace_rec(int i, TRACE_REC *trace)
     {
     case TRT_MEM_RD:
       strcpy(type, "MEM RD");
+
+#if ENABLE_DISASM_TRACE
+      instruction_bytes[inst_bytes_i] = trace[i].data;
+      inst_bytes_i = (inst_bytes_i+1) % MAX_INST_BYTES;
+#endif
+      
       break;
 
     case TRT_MEM_WR:
@@ -306,6 +319,19 @@ char *textify_trace_rec(int i, TRACE_REC *trace)
 
     case TRT_OP_RD:
       strcpy(type, "OP  RD");
+
+#if ENABLE_DISASM_TRACE
+      // Display instruction if we have one
+      if ( inst_bytes_i > 0 )
+	{
+	  disasm(instruction_bytes, inst_bytes_i);
+	}
+
+      // Start storing instruction bytes
+      inst_bytes_i = 0;
+      instruction_bytes[inst_bytes_i] = trace[i].data;
+      inst_bytes_i = (inst_bytes_i+1) % MAX_INST_BYTES;
+#endif
       break;
 
     case TRT_IO_WR:
@@ -3763,6 +3789,7 @@ void cmd_memory(String cmd)
 
       Serial.println(F(" (r:Display memory  a:Set address  w:write byte  e:Erase flash sector         E:Erase chip)"));
       Serial.println(F(" (m:Mem space       i:IO space     b:Set bank    X:write example code to 0000 Y:write code to all banks)"));
+      Serial.println(F(" (d:Disassemble address)"));
       Serial.println(F(" (u:upload bin to flash bank 0)"));
       Serial.println(F(" (return:next q:quit)"));
       
@@ -3797,8 +3824,23 @@ void cmd_memory(String cmd)
 		  upload_to_bank(0);
 		  break;
 
+#if ENABLE_DISASM_CMD
+		case 'd':
+		  // disassemble memory at address
+		  char bytes[32];
+
+		  address=working_address;
+		  for(int i=0; i<32; i++)
+		    {
+		      bytes[i] = read_cycle(address, working_space);
+		    }
+		  
+		  disasm(bytes, 10);
+		  break;
+#endif
+		  
 		case 'r':
-		  // display memory at address
+		  // display/disassemble memory at address
 		  char ads[10];
 		  BYTE d;
 		  address=working_address;
@@ -4184,210 +4226,363 @@ void loop()
 //
 //
 
-#if 1
+#if ENABLE_DISASM
 
 #define ENDIAN_SWAP(x) (((x&0xff)<<8)+((x&0xff00)>>8))
 
-const char * const disasm_desc[] =
-  {
+// 8 bit load
+const char da_200[] PROGMEM =    "01rrrsss :LD r,s:";
+const char da_0[] PROGMEM =    "00rrr110 nn :LD r, n:";
+const char da_1[] PROGMEM =    "01rrr110 :LD r, (HL):";
+const char da_2[] PROGMEM =    "11y11101 01rrr110 dd :LD r, (y+d):";
+const char da_3[] PROGMEM =    "01110rrr :LD (HL), r:";
+const char da_4[] PROGMEM =    "11y11101 01110rrr dd :LD (y+d), r:";
 
-    // 8 bit load
-    "01rrrsss :LD r,s:",
-    "00rrr110 nn :LD r, n:",
-    "01rrr110 :LD r, (HL):",
-    "11y11101 01rrr110 dd :LD r, (y+d):",
-    "01110rrr :LD (HL), r:",
-    "11y11101 01110rrr dd :LD (y+d), r:",
-
-    "00pp0001 nn nn :LD p, n:",
-    "2A nn nn :LD HL,(nn):",
-    "00110110 nn :LD (HL), n:",    
-    "11y11101 00110110 dd nn :LD (y+d), n:",
-    "02 :LD (BC),A:",
-    "12 :LD (DE),A:",
-    "3A nn nn :LD A, (nn):",
-    "1A :LD A,(DE):",
-    "0A :LD A,(BC):",
-    "32 nn nn :LD (nn), A:",
+const char da_5[] PROGMEM =    "00pp0001 nn nn :LD p, n:";
+const char da_6[] PROGMEM =    "2A nn nn :LD HL,(nn):";
+const char da_7[] PROGMEM =    "00110110 nn :LD (HL), n:" ;
+const char da_8[] PROGMEM =    "11y11101 00110110 dd nn :LD (y+d), n:";
+const char da_9[] PROGMEM =    "02 :LD (BC),A:";
+const char da_10[] PROGMEM =    "12 :LD (DE),A:";
+const char da_11[] PROGMEM =    "3A nn nn :LD A, (nn):";
+const char da_12[] PROGMEM =    "1A :LD A,(DE):";
+const char da_13[] PROGMEM =    "0A :LD A,(BC):";
+const char da_14[] PROGMEM =    "32 nn nn :LD (nn), A:";
     
-    "ED 57 :LD A,I:",
-    "ED 5F :LD, A,R:",
-    "ED 47 :LD I,A:",
-    "ED 4F :LD R,A:",
+const char da_15[] PROGMEM =    "ED 57 :LD A,I:";
+const char da_16[] PROGMEM =    "ED 5F :LD, A,R:";
+const char da_17[] PROGMEM =    "ED 47 :LD I,A:";
+const char da_18[] PROGMEM =    "ED 4F :LD R,A:";
 
     // 16 bit load
-    "00pp0001 nn nn :LD p, nn:",
-    "11y11101 21 nn nn :LD y, nn:",
-    "2A nn nn :LD HL, (nn):",
-    "ED 01pp1011 nn nn :LD p, (nn):",
-    "11y11101 2A nn nn :LD y, (nn):",
-    "22 nn nn :LD (nn), HL:",
-    "ED 01pp0011 nn nn :LD (nn), p:",
-    "11y11101 22 nn nn :LD (nn), y:",
-    "F9 :LD SP, HL:",
-    "11y11101 :LD SP, y:",
-    "11qq0101 :PUSH q:",
-    "11qq0001 :POP q:",
-    "11y11101 E5 :PUSH y:",
-    "11y11101 E1 :POP  y:",
+const char da_19[] PROGMEM =    "00pp0001 nn nn :LD p, nn:";
+const char da_20[] PROGMEM =    "11y11101 21 nn nn :LD y, nn:";
+const char da_21[] PROGMEM =    "2A nn nn :LD HL, (nn):";
+const char da_22[] PROGMEM =    "ED 01pp1011 nn nn :LD p, (nn):";
+const char da_23[] PROGMEM =    "11y11101 2A nn nn :LD y, (nn):";
+const char da_24[] PROGMEM =    "22 nn nn :LD (nn), HL:";
+const char da_25[] PROGMEM =    "ED 01pp0011 nn nn :LD (nn), p:";
+const char da_26[] PROGMEM =    "11y11101 22 nn nn :LD (nn), y:";
+const char da_27[] PROGMEM =    "F9 :LD SP, HL:";
+const char da_28[] PROGMEM =    "11y11101 :LD SP, y:";
+const char da_29[] PROGMEM =    "11qq0101 :PUSH q:";
+const char da_30[] PROGMEM =    "11qq0001 :POP q:";
+const char da_31[] PROGMEM =    "11y11101 E5 :PUSH y:";
+const char da_32[] PROGMEM =    "11y11101 E1 :POP  y:";
 
     // Exchange, block transfer and search
-    "EB :EX DE, HL:",
-    "08 :EX AF, AF':",
-    "D9 :EXX:",
-    "E3 :EX (SP), HL:",
-    "11y11101 E3 :EX(y), HL:",
-    "ED A0 :LDI:",
-    "ED B0 :LDIR:",
-    "ED A8 :LDD:",
-    "ED B8 :LDDR:",
-    "ED A1 :CPI:",
-    "ED B1 :CPIR:",
-    "ED A9 :CPD:",
-    "ED B9 :CPDR:",
+const char da_33[] PROGMEM =    "EB :EX DE, HL:";
+const char da_34[] PROGMEM =    "08 :EX AF, AF':";
+const char da_35[] PROGMEM =    "D9 :EXX:";
+const char da_36[] PROGMEM =    "E3 :EX (SP), HL:";
+const char da_37[] PROGMEM =    "11y11101 E3 :EX(y), HL:";
+const char da_38[] PROGMEM =    "ED A0 :LDI:";
+const char da_39[] PROGMEM =    "ED B0 :LDIR:";
+const char da_40[] PROGMEM =    "ED A8 :LDD:";
+const char da_41[] PROGMEM =    "ED B8 :LDDR:";
+const char da_42[] PROGMEM =    "ED A1 :CPI:";
+const char da_43[] PROGMEM =    "ED B1 :CPIR:";
+const char da_44[] PROGMEM =    "ED A9 :CPD:";
+const char da_45[] PROGMEM =    "ED B9 :CPDR:";
 
     // 8 bit arithmetic
-    "10000rrr :ADD A, r:",
-    "11000110 nn :ADD A, n:",
-    "86 :ADD A, (HL):",
-    "11y11101 86 dd :ADD A, (y+d):",
+const char da_46[] PROGMEM =    "10000rrr :ADD A, r:";
+const char da_47[] PROGMEM =    "11000110 nn :ADD A, n:";
+const char da_48[] PROGMEM =    "86 :ADD A, (HL):";
+const char da_49[] PROGMEM =    "11y11101 86 dd :ADD A, (y+d):";
 
-    "10001rrr :ADC A, r:",
-    "11001110 nn :ADC A, n:",
-    "11y11101 8E dd :ADC A, (y+d):",
+const char da_50[] PROGMEM =    "10001rrr :ADC A, r:";
+const char da_51[] PROGMEM =    "11001110 nn :ADC A, n:";
+const char da_52[] PROGMEM =    "11y11101 8E dd :ADC A, (y+d):";
 
-    "10010rrr :SUB r:",
-    "11010110 nn :SUB n:",
-    "11y11101 96 dd :SUB (y+d):",
+const char da_53[] PROGMEM =    "10010rrr :SUB r:";
+const char da_54[] PROGMEM =    "11010110 nn :SUB n:";
+const char da_55[] PROGMEM =    "11y11101 96 dd :SUB (y+d):";
 
-    "10011rrr :SBC A, r:",
-    "11011110 nn :SBC A, n:",
-    "11y11101 9E dd :SBC A, (y+d):",
+const char da_56[] PROGMEM =    "10011rrr :SBC A, r:";
+const char da_57[] PROGMEM =    "11011110 nn :SBC A, n:";
+const char da_58[] PROGMEM =    "11y11101 9E dd :SBC A, (y+d):";
 
-    "10100rrr :AND r:",
-    "11100110 nn :AND n:",
-    "11y11101 A6 dd :AND (y+d):",
+const char da_59[] PROGMEM =    "10100rrr :AND r:";
+const char da_60[] PROGMEM =    "11100110 nn :AND n:";
+const char da_61[] PROGMEM =    "11y11101 A6 dd :AND (y+d):";
     
-    "10110rrr :OR r:",
-    "11110110 nn :OR n:",
-    "11y11101 B6 dd :OR (y+d):",
+const char da_62[] PROGMEM =    "10110rrr :OR r:";
+const char da_63[] PROGMEM =    "11110110 nn :OR n:";
+const char da_64[] PROGMEM =    "11y11101 B6 dd :OR (y+d):";
 
-    "10101rrr :XOR r:",
-    "11101110 nn :XOR n:",
-    "11y11101 AE dd :XOR (y+d):",
+const char da_65[] PROGMEM =    "10101rrr :XOR r:";
+const char da_66[] PROGMEM =    "11101110 nn :XOR n:";
+const char da_67[] PROGMEM =    "11y11101 AE dd :XOR (y+d):";
 
-    "10111rrr :CP r:",
-    "11111110 nn :CP n:",
-    "11y11101 BE dd :CP (y+d):",
+const char da_68[] PROGMEM =    "10111rrr :CP r:";
+const char da_69[] PROGMEM =    "11111110 nn :CP n:";
+const char da_70[] PROGMEM =    "11y11101 BE dd :CP (y+d):";
 
-    "00rrr100 :INC r:",
-    "11y11101 34 dd :INC (y+d):",
+const char da_71[] PROGMEM =    "00rrr100 :INC r:";
+const char da_72[] PROGMEM =    "11y11101 34 dd :INC (y+d):";
     
-    "00rrr101 :DEC r:",
-    "11y11101 35 dd :DEC (y+d):",
+const char da_73[] PROGMEM =    "00rrr101 :DEC r:";
+const char da_74[] PROGMEM =    "11y11101 35 dd :DEC (y+d):";
 
     // General purpose arithmetic and CPU control
-    "27 :DAA:",
-    "2F :CPL:",
-    "ED 44 :NEG:",
-    "3F :CCF:",
-    "37 :SCF:",
-    "00 :NOP:",
-    "76 :HALT:"
-    "F3 :DI:",
-    "FB :EI:",
-    "ED 46 :IM 0:",
-    "ED 56 :IM 1:",
-    "ED 5E :IM 2:",
+const char da_75[] PROGMEM =    "27 :DAA:";
+const char da_76[] PROGMEM =    "2F :CPL:";
+const char da_77[] PROGMEM =    "ED 44 :NEG:";
+const char da_78[] PROGMEM =    "3F :CCF:";
+const char da_79[] PROGMEM =    "37 :SCF:";
+const char da_80[] PROGMEM =    "00 :NOP:";
+const char da_81[] PROGMEM =    "76 :HALT:";
+const char da_82[] PROGMEM =    "F3 :DI:";
+const char da_83[] PROGMEM =    "FB :EI:";
+const char da_84[] PROGMEM =    "ED 46 :IM 0:";
+const char da_85[] PROGMEM =    "ED 56 :IM 1:";
+const char da_86[] PROGMEM =    "ED 5E :IM 2:";
 
     // 16 bit arithmetic
-    "00pp1001 :ADD HL, p:",
-    "ED 01pp1010 :ADC HL, p:",
-    "ED 01pp0010 :SBC HL, p:",
-    "DD 00pp1001 :SBC HL, px:",
-    "FD 00pp1001 :SBC HL, py:",
-    "00pp0011 :INC p:",
-    "11y11101 23 :INC y:",
-    "00pp1011 :DEC p:",
-    "11y11101 2B :DEC y:",
+const char da_87[] PROGMEM =    "00pp1001 :ADD HL, p:";
+const char da_88[] PROGMEM =    "ED 01pp1010 :ADC HL, p:";
+const char da_89[] PROGMEM =    "ED 01pp0010 :SBC HL, p:";
+const char da_90[] PROGMEM =    "DD 00pp1001 :SBC HL, px:";
+const char da_91[] PROGMEM =    "FD 00pp1001 :SBC HL, py:";
+const char da_92[] PROGMEM =    "00pp0011 :INC p:";
+const char da_93[] PROGMEM =    "11y11101 23 :INC y:";
+const char da_94[] PROGMEM =    "00pp1011 :DEC p:";
+const char da_95[] PROGMEM =    "11y11101 2B :DEC y:";
 
     // Rotate and shift
-    "07 :RLCA:",
-    "17 :RLA:",
-    "0F :RRCA:",
-    "1F :RRA:",
-    "CB 00000rrr :RLC r:",
-    "11y11101 CB dd 06 :RLC (y+d):",
+const char da_96[] PROGMEM =    "07 :RLCA:";
+const char da_97[] PROGMEM =    "17 :RLA:";
+const char da_98[] PROGMEM =    "0F :RRCA:";
+const char da_99[] PROGMEM =    "1F :RRA:";
+const char da_100[] PROGMEM =    "CB 00000rrr :RLC r:";
+const char da_101[] PROGMEM =    "11y11101 CB dd 06 :RLC (y+d):";
 
-    "CB 00010rrr :RL r:",
-    "11y11101 CB dd 16 :RL (y+d):",
+const char da_102[] PROGMEM =    "CB 00010rrr :RL r:";
+const char da_103[] PROGMEM =    "11y11101 CB dd 16 :RL (y+d):";
 
-    "CB 00001rrr :RRC r:",
-    "11y11101 CB dd 0E :RRC (y+d):",
+const char da_104[] PROGMEM =    "CB 00001rrr :RRC r:";
+const char da_105[] PROGMEM =    "11y11101 CB dd 0E :RRC (y+d):";
     
-    "CB 00011rrr :RR r:",
-    "11y11101 CB dd 1E :RR (y+d):",
+const char da_106[] PROGMEM =    "CB 00011rrr :RR r:";
+const char da_107[] PROGMEM =    "11y11101 CB dd 1E :RR (y+d):";
 
-    "CB 00100rrr :SLA r:",
-    "11y11101 CB dd 26 :SLA (y+d):",
+const char da_108[] PROGMEM =    "CB 00100rrr :SLA r:";
+const char da_109[] PROGMEM =    "11y11101 CB dd 26 :SLA (y+d):";
 
-    "CB 00101rrr :SRA r:",
-    "11y11101 CB dd 2E :SRA (y+d):",
+const char da_110[] PROGMEM =    "CB 00101rrr :SRA r:";
+const char da_111[] PROGMEM =    "11y11101 CB dd 2E :SRA (y+d):";
 
-    "CB 001!1rrr :SRL r:",
-    "11y11101 CB dd 3E :SRL (y+d):",
+const char da_112[] PROGMEM =    "CB 001!1rrr :SRL r:";
+const char da_113[] PROGMEM =    "11y11101 CB dd 3E :SRL (y+d):";
 
-    "ED 6F :RLD:",
-    "ED 67 :RRD:",
+const char da_114[] PROGMEM =    "ED 6F :RLD:";
+const char da_115[] PROGMEM =    "ED 67 :RRD:";
 
     // Bit set, reset and test
-    "CB 01bbbrrr :BIT b, r:",
-    "11y11101 CB dd 01bbb110 :BIT b, (y+d):",
-    "CB 11bbbrrr :SET b, r:",
-    "11y11101 CB dd 01bbb110 :SET b, (y+d):",
-    "CB 10bbbrrr :RES b, r:",
-    "11y11101 CB dd 10bbb110 :RES b, (y+d):",
+const char da_116[] PROGMEM =    "CB 01bbbrrr :BIT b, r:";
+const char da_117[] PROGMEM =    "11y11101 CB dd 01bbb110 :BIT b, (y+d):";
+const char da_118[] PROGMEM =    "CB 11bbbrrr :SET b, r:";
+const char da_119[] PROGMEM =    "11y11101 CB dd 01bbb110 :SET b, (y+d):";
+const char da_120[] PROGMEM =    "CB 10bbbrrr :RES b, r:";
+const char da_121[] PROGMEM =    "11y11101 CB dd 10bbb110 :RES b, (y+d):";
 
     // Jump
-    "C3 nn nn :JP nn:",
-    "11ccc010 nn nn :JP c, nn:",
-    "18 ee :JR e:",
-    "38 ee :JR C, e:",
-    "30 ee :JR NC, e:",
-    "28 ee :JR Z, e:",
-    "20 ee :JR NZ, e:",
-    "E9 :JP (HL):",
-    "11y11101 E9 :JP(y):",
-    "10 ee :DJNZ e:",
-    "38 ee :JR C, e:",
+const char da_122[] PROGMEM =    "C3 nn nn :JP nn:";
+const char da_123[] PROGMEM =    "11ccc010 nn nn :JP c, nn:";
+const char da_124[] PROGMEM =    "18 ee :JR e:";
+const char da_125[] PROGMEM =    "38 ee :JR C, e:";
+const char da_126[] PROGMEM =    "30 ee :JR NC, e:";
+const char da_127[] PROGMEM =    "28 ee :JR Z, e:";
+const char da_128[] PROGMEM =    "20 ee :JR NZ, e:";
+const char da_129[] PROGMEM =    "E9 :JP (HL):";
+const char da_130[] PROGMEM =    "11y11101 E9 :JP(y):";
+const char da_131[] PROGMEM =    "10 ee :DJNZ e:";
+const char da_132[] PROGMEM =    "38 ee :JR C, e:";
 
     // Call and return
-    "CD nn nn :CALL nn:",
-    "11ccc100 nn nn :CALL cc, nn:",
-    "C9 :RET:",
-    "11ccc000 :RET c:",
-    "ED 4D :RETI:",
-    "ED 45 :RETN:",
-    "11ttt111 :RST t:",
+const char da_133[] PROGMEM =    "CD nn nn :CALL nn:";
+const char da_134[] PROGMEM =    "11ccc100 nn nn :CALL cc, nn:";
+const char da_135[] PROGMEM =    "C9 :RET:";
+const char da_136[] PROGMEM =    "11ccc000 :RET c:";
+const char da_137[] PROGMEM =    "ED 4D :RETI:";
+const char da_138[] PROGMEM =    "ED 45 :RETN:";
+const char da_139[] PROGMEM =    "11ttt111 :RST t:";
 
     // Input and output
-    "DB nn :IN A, (n):",
-    "ED 01rrr000 :IN r, (C):",
-    "ED A2 :INI:",
-    "ED B2 :INIR:",
-    "ED AA :IND:",
-    "ED BA :INDR:",
-    "D3 nn :OUT (n), A:",
-    "ED 01rrr001 :OUT (C), r:",
-    "ED A3 :OUTI:",
-    "ED B3 :OTIR:",
-    "ED AB :OUTD:",
-    "ED BB :OTDR:",
+const char da_140[] PROGMEM =    "DB nn :IN A, (n):";
+const char da_141[] PROGMEM =    "ED 01rrr000 :IN r, (C):";
+const char da_142[] PROGMEM =    "ED A2 :INI:";
+const char da_143[] PROGMEM =    "ED B2 :INIR:";
+const char da_144[] PROGMEM =    "ED AA :IND:";
+const char da_145[] PROGMEM =    "ED BA :INDR:";
+const char da_146[] PROGMEM =    "D3 nn :OUT (n), A:";
+const char da_147[] PROGMEM =    "ED 01rrr001 :OUT (C), r:";
+const char da_148[] PROGMEM =    "ED A3 :OUTI:";
+const char da_149[] PROGMEM =    "ED B3 :OTIR:";
+const char da_150[] PROGMEM =    "ED AB :OUTD:";
+const char da_151[] PROGMEM =    "ED BB :OTDR:";
+const char da_999[] PROGMEM =    "";
 
-    NULL,
+const char * const disasm_desc_p[] PROGMEM =
+  {
+    da_200,
+    da_0,
+    da_1,
+    da_2,
+    da_3,
+    da_4,
+    da_5,
+    da_6,
+    da_7,
+    da_8,
+    da_9,
+    da_10,
+    da_11,
+    da_12,
+    da_13,
+    da_14,
+    da_15,
+    da_16,
+    da_17,
+    da_18,
+    da_19,
+    da_20,
+    da_21,
+    da_22,
+    da_23,
+    da_24,
+    da_25,
+    da_26,
+    da_27,
+    da_28,
+    da_29,
+    da_30,
+    da_31,
+    da_32,
+    da_33,
+    da_34,
+    da_35,
+    da_36,
+    da_37,
+    da_38,
+    da_39,
+    da_40,
+    da_41,
+    da_42,
+    da_43,
+    da_44,
+    da_45,
+    da_46,
+    da_47,
+    da_48,
+    da_49,
+    da_50,
+    da_51,
+    da_52,
+    da_53,
+    da_54,
+    da_55,
+    da_56,
+    da_57,
+    da_58,
+    da_59,
+    da_60,
+    da_61,
+    da_62,
+    da_63,
+    da_64,
+    da_65,
+    da_66,
+    da_67,
+    da_68,
+    da_69,
+    da_70,
+    da_71,
+    da_72,
+    da_73,
+    da_74,
+    da_75,
+    da_76,
+    da_77,
+    da_78,
+    da_79,
+    da_80,
+    da_81,
+    da_82,
+    da_83,
+    da_84,
+    da_85,
+    da_86,
+    da_87,
+    da_88,
+    da_89,
+    da_90,
+    da_91,
+    da_92,
+    da_93,
+    da_94,
+    da_95,
+    da_96,
+    da_97,
+    da_98,
+    da_99,
+    da_100,
+    da_101,
+    da_102,
+    da_103,
+    da_104,
+    da_105,
+    da_106,
+    da_107,
+    da_108,
+    da_109,
+    da_110,
+    da_111,
+    da_112,
+    da_113,
+    da_114,
+    da_115,
+    da_116,
+    da_117,
+    da_118,
+    da_119,
+    da_120,
+    da_121,
+    da_122,
+    da_123,
+    da_124,
+    da_125,
+    da_126,
+    da_127,
+    da_128,
+    da_129,
+    da_130,
+    da_131,
+    da_132,
+    da_133,
+    da_134,
+    da_135,
+    da_136,
+    da_137,
+    da_138,
+    da_139,
+    da_140,
+    da_141,
+    da_142,
+    da_143,
+    da_144,
+    da_145,
+    da_146,
+    da_147,
+    da_148,
+    da_149,
+    da_150,
+    da_151,
+    da_999,
   };
 
-#define NUM_DISASM_DESC (sizeof(disasm_desc))
+#define NUM_DISASM_DESC (sizeof(disasm_desc_p))
 
 boolean word_literal(char *word)
 {
@@ -4459,7 +4654,7 @@ void add_to_value(char name, int value, int radix)
   
   fields[index].value *= radix;
   fields[index].value += value;
-  //printf("\nField %d: Add %d(%d) : %c     -> %d", index, value, radix, fields[index].name, fields[index].value);
+  //  Serial.println("\nField %d: Add %d(%d) : %c     -> %d", index, value, radix, fields[index].name, fields[index].value);
 }
 
 void set_field_value(char name, int value)
@@ -4475,11 +4670,14 @@ void set_field_value(char name, int value)
 	}
     }
 
-  //printf("\nNew field set field %c to %d", name, value);
+  //Serial.print("\nNew field set field %c to %d");
+  //Serial.print(name);
+  //Serial.println(value);
   fields[num_fields].name = name;
   fields[num_fields].value = value;
   num_fields++;
-  //printf("\n Now %d fields", num_fields);
+  //Serial.print("\n Now %d fields ");
+  //Serial.println(num_fields);
 }
 
 // Initialise any fields that are present in the word
@@ -4512,6 +4710,8 @@ boolean match_word(char *word, unsigned char byte)
   // See if the word is a literal value
   if( word_literal(word))
     {
+      //Serial.println("Literal");
+      
       // If the word is two characters then it matches the byte as hex
       // If 8 characters then it matches as binary
       
@@ -4567,7 +4767,7 @@ boolean match_word(char *word, unsigned char byte)
       switch(strlen(word))
 	{
 	case 2:
-	  //	  printf("\n>>> Hex ");
+	  //Serial.println("\n>>> Hex ");
 	  
 	  // Hex digits represent nibbles
 	  nibble_mask = 0xf0;
@@ -4625,7 +4825,7 @@ boolean match_word(char *word, unsigned char byte)
 	  break;
 
 	case 8:
-	  //printf("\n>>> Binary");
+	  //Serial.println("\n>>> Binary");
 
 
 	  // Binary digits represent bits
@@ -4707,7 +4907,8 @@ boolean disasm_desc_match(char *disasm_desc, unsigned char *bytes)
   // Get words and process them
   while ( !done && (strlen(disasm_desc) > 0) )
     {
-      //printf("\ndoing '%c'", *disasm_desc);
+      //Serial.print("\ndoing ");
+      //Serial.println(*disasm_desc);
       
       switch(*disasm_desc)
 	{
@@ -5013,7 +5214,8 @@ char * disasm_desc_decode(char *disasm_desc, unsigned char *bytes)
   
 }
 
-char disasm_str[30];
+
+char disasm_desc[30];
 
 // Length prefixed bytes
 void disasm(unsigned char *bytes, int num_bytes)
@@ -5025,48 +5227,51 @@ void disasm(unsigned char *bytes, int num_bytes)
   boolean any_match;
   char byte_str[3] = "..";
   
-  disasm_str[0] = '\0';
-  
   while( bytes < (start+num_bytes) )
     {
       any_match = false;
       for(i=0; i< NUM_DISASM_DESC; i++)
 	{
+	  // Copy desc into RAM
+	  strcpy_P(disasm_desc, (char *)pgm_read_word(&(disasm_desc_p[i])));
+	  //Serial.println(disasm_desc);
+	  
 	  // Reset field values
 	  num_fields = 0;
 
 	  // End of disasm_desc list
-	  if( disasm_desc[i] == NULL )
+	  if( strlen(disasm_desc) == 0 )
 	    {
 	      break;
 	    }
 
 	  // Does this one match?
-	  if ( (num_match = disasm_desc_match(disasm_desc[i], bytes)) > 0 )
+	  if ( (num_match = disasm_desc_match(disasm_desc, bytes)) > 0 )
 	    {
+	      Serial.println("  >>match");
 	      any_match = true;
 	      
 	      // Yes, get decoded instruction
-	      disasm_desc_decode(disasm_desc[i], bytes);
+	      disasm_desc_decode(disasm_desc, bytes);
 	      
 	      total_matched += num_match;
 
-	      strcat(disasm_str, "\n");
+	      Serial.print("\n>>");
 	      
 	      for(j=0; j<num_match; j++)
 		{
 		  sprintf(byte_str, "%02X", *(bytes+j));
-		  strcat(disasm_str, " ");
-		  strcat(disasm_str, byte_str);
+		  Serial.print(":");
+		  Serial.print(byte_str);
 		}
 	      
 	      for(; j<6; j++)
 		{
-		  strcat(disasm_str, "   ");
+		  Serial.print("   ");
 		}
 	      
 	      bytes += num_match;	      
-	      strcat(disasm_str, decode_string);
+	      Serial.print( decode_string);
 	      break;
 	    }
 	  
