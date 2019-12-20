@@ -1,0 +1,2 @@
+zcc +z80 -m -v -SO3 --max-allocs-per-node200000 -compiler sdcc -clib=sdcc_iy -startup=1 --c-code-in-asm -no-cleanup --list lcdtest.c  --list ../lcd/z80_shield_lcd.c ../pio/z80_shield_pio.c ../ctc/z80_shield_ctc.c -o lcdtest --std-c11 -create-app -Cz"--ihex --romsize=0x8000"
+appmake +hex -b lcdtest_CODE.bin --ihex --clean

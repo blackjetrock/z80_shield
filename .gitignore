@@ -8,6 +8,7 @@
 *.TXT
 \#*\#
 .*
+!.gitignore
 *.cmd
 *.net
 *.bak
@@ -18,6 +19,13 @@
 *.c.lis
 *.ihx
 *.lis
+*.lst
+*.txt
 *.rom
 *.bin
+*.pdf
+*-
+*.o
+*.map
+*.jpg
 zcc_opt.def

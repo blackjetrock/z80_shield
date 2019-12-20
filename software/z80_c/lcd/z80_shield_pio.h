@@ -14,9 +14,4 @@ __sfr __at 0x82 IO_PIO1_A_CONTROL;
 __sfr __at 0x83 IO_PIO1_B_CONTROL; 
 
 
-#define PIO0 0
-#define PIO1 1
-#define PIO_PORT_A 1
-#define PIO_PORT_B 0
 
-void z80_shield_pio_init(int pio, int a_nb, int data, int io_pattern);

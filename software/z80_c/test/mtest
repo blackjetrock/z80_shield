@@ -1,0 +1,4 @@
+#zcc +embedded -v -compiler sdcc -startup=0 --no-crt --c-code-in-asm -no-cleanup --list test.c -o test -clib=new --std-c11
+#zcc +embedded -v -compiler sdcc -startup=1  --c-code-in-asm -no-cleanup --list test.c -o test -clib=new --std-c11
+appmake +hex --org 0 -b test
+zcc +z80 -m -v -SO3 --max-allocs-per-node200000 -compiler sdcc -clib=sdcc_iy -startup=1 --c-code-in-asm -no-cleanup --list test.c -o test --std-c11 -create-app -Cz"--ihex --romsize=0x8000"

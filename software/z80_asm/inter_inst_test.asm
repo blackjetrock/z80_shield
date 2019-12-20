@@ -1,21 +1,5 @@
-;Z80 code to set up LCD on shield and write a string
-IO_ADDR_PIO0:      EQU  00H
-IO_ADDR_PIO0_AD:   EQU  IO_ADDR_PIO0+0
-IO_ADDR_PIO0_BD:   EQU  IO_ADDR_PIO0+1
-IO_ADDR_PIO0_AC:   EQU  IO_ADDR_PIO0+2
-IO_ADDR_PIO0_BC:   EQU  IO_ADDR_PIO0+3
-
-IO_ADDR_PIO1:      EQU  80H
-IO_ADDR_PIO1_AD:   EQU  IO_ADDR_PIO1+0
-IO_ADDR_PIO1_BD:   EQU  IO_ADDR_PIO1+1
-IO_ADDR_PIO1_AC:   EQU  IO_ADDR_PIO1+2
-IO_ADDR_PIO1_BC:   EQU  IO_ADDR_PIO1+3
-
-AD_CS:	           EQU  01H
-AD_CLK:	           EQU  02H
-AD_DIN:	           EQU  04H		
-AD_DOUT:	   EQU  08H
-
+	;; Test code that runs betwen each instruction
+	
         SECTION SHADOW
 	ORG     0A000H
 	

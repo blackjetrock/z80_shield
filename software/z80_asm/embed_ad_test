@@ -1,0 +1,4 @@
+#z80asm lcdtest.z80
+#../scripts//z80_convert.tcl lcdtest.z80.lst example_code_lcd_test ../arduino/z80_shield/z80_shield.ino
+#touch ../arduino/z80_shield/z80_shield.ino
+zcc +z80 -l -v --no-crt  lcdtest.asm -o lcdtest -subtype=none -create-app -Cz"+glue --ihex --clean"

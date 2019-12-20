@@ -3,11 +3,24 @@
 // Serial monitor based control program
 //
 
+#include <stdio.h>
+#include <string.h>
+#include <ctype.h>
+
 // If you enable this, the Mega will supply data from its own internal buffer when the Z80
 // reads bytes from the ROM (i.e. Flash). Turn it off for the flash to supply the bytes, in
 // which case you only need to remember to write your code/data to flash once. :)
 //
-#define ENABLE_MEGA_ROM_EMULATION 0
+#define ENABLE_MEGA_ROM_EMULATION   0
+#define ENABLE_DIRECT_PORT_ACCESS   1
+#define ENABLE_TIMINGS              0
+#define ENABLE_LOCAL_ECHO           0
+#define ENABLE_DISASM               0
+#define ENABLE_DISASM_TRACE         0
+#define ENABLE_DISASM_CMD           0
+
+#define TRACE_SIZE                 40
+#define II_TRACE_SIZE              80
 
 typedef unsigned char BYTE;
 typedef void (*FPTR)();
@@ -19,15 +32,95 @@ void run_bsm(int stim);
 String bsm_state_name();
 unsigned int addr_state();
 unsigned int data_state();
+void disasm(unsigned char *bytes, int num_bytes);
 
 // Run in quiet mode
 boolean quiet = false;
 boolean fast_mode = false;       // Skip all output and interaction
 
+// Some command must not be interrupted, some can be, some have to be (like 'f')
+// The command must handle the setting and clearing of this flag
+boolean uninterruptible_command = false;
+
+// Set if the opcode of this bus cycle is a prefix type (does not work in injected code sequences)
+boolean prefix_opcode = false;
+
+const BYTE prefix_opcodes[] = {0xdd, 0xfd, 0xed, 0xcb };
+
+#define NUM_PREFIX_OPCODES (sizeof(prefix_opcodes))
+  
+// Stop if M1 asserted (used for running to next instruction
+boolean stop_on_m1 = false;
+
+// Stop on full instruction
+// Stops once a full instruction, i.e. not just a prefix type opcode has executed
+boolean stop_on_full_instruction = false;
+
+// Flag is set when opcode is traced, and cleared when M1 is asserted
+// This is used to make the 'next instruction' commad work more intuitively
+boolean opcode_traced = false;
+
+// Array that tells us how long an instrcution is, for every opcode
+// Used in inter instruction code execution
+// Not array of struct so it stays in flash
+
+const BYTE instruction_length[] =
+  {
+    0x08, 1,    // EX AF,AF'
+    0x18, 2,    // JR x
+
+    0x21, 3,
+    0x22, 3,
+    0x23, 1,
+    
+    0x3e, 2,
+    0x31, 3,
+
+    0x43, 3,
+    
+    0x77, 1,
+    0x7e, 1,
+
+
+    0xc1, 1,
+    0xc3, 3,  // call
+    0xc5, 1,
+    
+    0xd1, 1,
+    0xd5, 1,
+    0xd9, 1,   // exx
+    0xdd, 1,   // prefix hl-> ix
+
+    0xe1, 1,    // pop  ix/iy/hl
+    0xe5, 1,    // push ix/iy/hl
+
+    0xed, 1,
+
+    0xf1, 1,
+    0xf5, 1,
+    0xfd, 1,   // prefix hl-> iy
+
+    0x00, 1     // Both NOP and end of table
+  };
+
+
+
+// Inserting code between instructions
+boolean inter_inst = false;
+boolean inter_inst_trace = false;
+
+BYTE *inter_inst_code = NULL;
+unsigned int inter_inst_index = 0;
+unsigned int inter_inst_code_length = 0;
+unsigned int inter_inst_em_count = 0;
+boolean ii_process_registers = false;
+
+// Run to this address and stop in fast mode
+int fast_to_address = -1;
+
 // Current example code
 BYTE *example_code;
 int example_code_length;
-
 
 #define VERTICAL_LABELS  0
 
@@ -162,9 +255,136 @@ enum
     EV_A_RES,    EV_D_RES,
     EV_A_MAPRQM, EV_D_MAPRQM,
     EV_A_MAPRQI, EV_D_MAPRQI,
+    EV_A_NULL,   EV_D_NULL,       // just used for initialisation
   };
 
+// Tracing
+typedef enum
+  {
+    TRT_INVALID,
+    TRT_MEM_RD,
+    TRT_MEM_WR,
+    TRT_IO_RD,
+    TRT_IO_WR,
+    TRT_OP_RD,    // Opcode fetch
+  } TRACE_REC_TYPE;
+
+typedef struct
+{
+  TRACE_REC_TYPE type;
+  unsigned int data;
+  unsigned int addr;
+} TRACE_REC;
+
+// There's a performance degradation if tracing is on so allow it to be turned off
+int trace_on = 1;
+
+int trace_index = 0;
+int ii_trace_index = 0;
+
+// Instruction bus trace
+TRACE_REC trace[TRACE_SIZE];
+
+// Inter Instruction bus trace
+TRACE_REC ii_trace[II_TRACE_SIZE];
+
+char trace_rec_buf[40];
+BYTE instruction_bytes[10];
+int inst_bytes_i = 0;
+#define MAX_INST_BYTES (sizeof(instruction_bytes))
+
+char *textify_trace_rec(int i, TRACE_REC *trace)
+{
+  char type[20];
+  
+  switch(trace[i].type)
+    {
+    case TRT_MEM_RD:
+      strcpy(type, "MEM RD");
+
+#if ENABLE_DISASM_TRACE
+      instruction_bytes[inst_bytes_i] = trace[i].data;
+      inst_bytes_i = (inst_bytes_i+1) % MAX_INST_BYTES;
+#endif
+      
+      break;
+
+    case TRT_MEM_WR:
+      strcpy(type, "MEM WR");
+      break;
+
+    case TRT_IO_RD:
+      strcpy(type, "IO  RD");
+      break;
+
+    case TRT_OP_RD:
+      strcpy(type, "OP  RD");
+
+#if ENABLE_DISASM_TRACE
+      // Display instruction if we have one
+      if ( inst_bytes_i > 0 )
+	{
+	  disasm(instruction_bytes, inst_bytes_i);
+	}
+
+      // Start storing instruction bytes
+      inst_bytes_i = 0;
+      instruction_bytes[inst_bytes_i] = trace[i].data;
+      inst_bytes_i = (inst_bytes_i+1) % MAX_INST_BYTES;
+#endif
+      break;
+
+    case TRT_IO_WR:
+      strcpy(type, "IO  WR");
+      break;
+	     
+    default:
+      strcpy(type, "????");
+      break;
+    }
+  
+  sprintf(trace_rec_buf, "%02d: %s %04X %02X", i, type, trace[i].addr, trace[i].data);
+  return(trace_rec_buf);
+}
+
+// Trace into he appropriate buffer
+
+void trace_rec(TRACE_REC_TYPE trt)
+{
+  if ( trace_on )
+    {
+      if( inter_inst_trace )
+	{
+	  ii_trace[ii_trace_index].type = trt;
+	  ii_trace[ii_trace_index].data = data_state();
+	  ii_trace[ii_trace_index].addr = addr_state();
+	  ii_trace_index++;
+	  ii_trace_index = ii_trace_index % II_TRACE_SIZE;
+	}
+      else
+	{
+	  trace[trace_index].type = trt;
+	  trace[trace_index].data = data_state();
+	  trace[trace_index].addr = addr_state();
+	  trace_index++;
+	  trace_index = trace_index % TRACE_SIZE;
+	}
+
+      // Turn off ii tracing if ii is off. This is for an edge condition as we turn ii off (we want to trace the last
+      // bus transfer, but we have turned ii off before we trace)
+      if ( !inter_inst )
+	{
+	  inter_inst_trace = false;
+	}
+      
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+//
 // IO addresses
+//
+
 const int IO_ADDR_PIO0    = 0x00;
 const int IO_ADDR_PIO0_AD = IO_ADDR_PIO0+0;
 const int IO_ADDR_PIO0_BD = IO_ADDR_PIO0+1;
@@ -186,70 +406,73 @@ const int IO_ADDR_BANK  = 0xC0;
 
 struct
 {
-  String signame;
-  String description;
-  String assertion_note;
+  const String signame;
+  const String description;
+  const String assertion_note;
   const int pin;
   int   current_state;
-  struct
+  const struct
   {
     int     mode;        // Mode
     uint8_t mode_dir;    // The direction we set this line when in this mode
     uint8_t mode_val;    // Default value for this mode
   } modes[2];
-  int     assert_ev;   // Assert event
-  int     deassert_ev; // Deassert event
+  const int     assert_ev;   // Assert event
+  const int     deassert_ev; // Deassert event
 }
+  
 // The order in this list defines the order in which events will be raised, which affects how th e
 // bus state machine will be laid out.
 //
   signal_list[] =
-  {
-    {  "BUSREQ", "Mega --> Z80",    "     - Asserted, means Mega is controlling the Z80's buses",
-       BUSREQ_Pin, 0, {{MODE_SLAVE, OUTPUT, HIGH},{MODE_MEGA_MASTER, OUTPUT, LOW }}, EV_A_BUSREQ, EV_D_BUSREQ},
-    {  "BUSACK", "Z80  --> Mega",   "    - Asserted, means Z80 acknowledges it's not in control of its buses",
-       BUSACK_Pin, 0, {{MODE_SLAVE, INPUT,  HIGH},{MODE_MEGA_MASTER, INPUT,  HIGH}},  EV_A_BUSACK, EV_D_BUSACK},
-    {  "  MREQ", "Z80  --> Mega",   "    - Asserted, means address bus holds a memory address for a read or write",
-       MREQ_Pin,   0, {{MODE_SLAVE, INPUT,  HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}},  EV_A_MREQ, EV_D_MREQ},
-    {  " IOREQ", "Z80  --> Mega",   "    - Asserted, means lower half of address bus holds an IO address for a read or write",
-       IOREQ_Pin,  0, {{MODE_SLAVE, INPUT,  HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}},  EV_A_IOREQ, EV_D_IOREQ},
-    {  "    WR", "Z80  --> Mega",   "    - Asserted, means the data bus holds a value to be written",
-       WR_Pin,     0, {{MODE_SLAVE, INPUT,  HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}},  EV_A_WR, EV_D_WR},
-    {  "    RD", "Z80  --> Mega",   "    - Asserted, means the Z80 wants to read data from external device",
-       RD_Pin,     0, {{MODE_SLAVE, INPUT,  HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}},  EV_A_RD, EV_D_RD},
-    {  "    M1", "Z80  --> Mega",   "    - Asserted, means Z80 is doing an opcode fetch cycle",
-       M1_Pin,     0, {{MODE_SLAVE, INPUT,  HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}},  EV_A_M1, EV_D_M1},
-    {  "  RFSH", "Z80  --> Mega",   "    - Asserted, means Z80 is in refresh state",
-       RFSH_Pin,   0, {{MODE_SLAVE, INPUT,  HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}},  EV_A_RFSH, EV_D_RFSH},
-    {  "   NMI", "Mega --> Z80",    "     - Asserted, means a non maskable interrupt is being sent to the Z80",
-       NMI_Pin,    0, {{MODE_SLAVE, OUTPUT, HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}}, EV_A_NMI, EV_D_NMI},
-    {  "   INT", "Mega --> Z80",    "     - Asserted, means a maskable interrupt is being sent to the Z80",
-       INT_Pin,    0, {{MODE_SLAVE, OUTPUT, HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}}, EV_A_INT, EV_D_INT},
-    {  "  WAIT", "Mega --> Z80",    "",
-       WAIT_Pin,   0, {{MODE_SLAVE, OUTPUT, HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}}, EV_A_WAIT, EV_D_WAIT},
-    {  "   CLK", "Mega --> Z80",    "     - Asserted, means Z80 is in the second half of a T-state",
-       A_CLK_Pin,  0, {{MODE_SLAVE, OUTPUT, HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}}, EV_A_CLK, EV_D_CLK},
-    {  "   RES", "Mega --> Z80",    "     - Asserted, means the Z80 is being held in reset state",
-       A_RES_Pin,  0, {{MODE_SLAVE, OUTPUT, HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}}, EV_A_RES, EV_D_RES},
-    {  "MAPRQM", "Mega --> Shield", "  - Mega is not providing memory (Flash and RAM) contents (real hardware is mapped)",
-       MAPRQM_Pin, 0, {{MODE_SLAVE, OUTPUT, HIGH},{MODE_MEGA_MASTER, OUTPUT, LOW }}, EV_A_MAPRQM, EV_D_MAPRQM},
-    {  "MAPRQI", "Mega --> Shield", "  - Mega is not providing IO (GPIO, CTC) contents (real hardware is mapped)",
-       MAPRQI_Pin, 0, {{MODE_SLAVE, OUTPUT, LOW },{MODE_MEGA_MASTER, OUTPUT, LOW }},  EV_A_MAPRQI, EV_D_MAPRQI},
-    {  "---",    "",                "",
-       0,          0, {{MODE_SLAVE, INPUT,  HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}},  0, 0},
-  };
+    {
+      {  "BUSREQ", "Mega --> Z80",    "     - Asserted, means Mega is controlling the Z80's buses",
+	 BUSREQ_Pin, 0, {{MODE_SLAVE, OUTPUT, HIGH},{MODE_MEGA_MASTER, OUTPUT, LOW }}, EV_A_BUSREQ, EV_D_BUSREQ},
+      {  "BUSACK", "Z80  --> Mega",   "    - Asserted, means Z80 acknowledges it's not in control of its buses",
+	 BUSACK_Pin, 0, {{MODE_SLAVE, INPUT,  HIGH},{MODE_MEGA_MASTER, INPUT,  HIGH}},  EV_A_BUSACK, EV_D_BUSACK},
+      {  "    M1", "Z80  --> Mega",   "    - Asserted, means Z80 is doing an opcode fetch cycle",
+	 M1_Pin,     0, {{MODE_SLAVE, INPUT,  HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}},  EV_A_M1, EV_D_M1},
+      {  "  MREQ", "Z80  --> Mega",   "    - Asserted, means address bus holds a memory address for a read or write",
+	 MREQ_Pin,   0, {{MODE_SLAVE, INPUT,  HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}},  EV_A_MREQ, EV_D_MREQ},
+      {  " IOREQ", "Z80  --> Mega",   "    - Asserted, means lower half of address bus holds an IO address for a read or write",
+	 IOREQ_Pin,  0, {{MODE_SLAVE, INPUT,  HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}},  EV_A_IOREQ, EV_D_IOREQ},
+      {  "  RFSH", "Z80  --> Mega",   "    - Asserted, means Z80 is in refresh state",
+	 RFSH_Pin,   0, {{MODE_SLAVE, INPUT,  HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}},  EV_A_RFSH, EV_D_RFSH},
+      {  "    WR", "Z80  --> Mega",   "    - Asserted, means the data bus holds a value to be written",
+	 WR_Pin,     0, {{MODE_SLAVE, INPUT,  HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}},  EV_A_WR, EV_D_WR},
+      {  "    RD", "Z80  --> Mega",   "    - Asserted, means the Z80 wants to read data from external device",
+	 RD_Pin,     0, {{MODE_SLAVE, INPUT,  HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}},  EV_A_RD, EV_D_RD},
+      {  "   NMI", "Mega --> Z80",    "     - Asserted, means a non maskable interrupt is being sent to the Z80",
+	 NMI_Pin,    0, {{MODE_SLAVE, OUTPUT, HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}}, EV_A_NMI, EV_D_NMI},
+      {  "   INT", "Mega --> Z80",    "     - Asserted, means a maskable interrupt is being sent to the Z80",
+	 INT_Pin,    0, {{MODE_SLAVE, OUTPUT, HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}}, EV_A_INT, EV_D_INT},
+      {  "  WAIT", "Mega --> Z80",    "",
+	 WAIT_Pin,   0, {{MODE_SLAVE, OUTPUT, HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}}, EV_A_WAIT, EV_D_WAIT},
+      {  "   CLK", "Mega --> Z80",    "     - Asserted, means Z80 is in the second half of a T-state",
+	 A_CLK_Pin,  0, {{MODE_SLAVE, OUTPUT, HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}}, EV_A_CLK, EV_D_CLK},
+      {  "   RES", "Mega --> Z80",    "     - Asserted, means the Z80 is being held in reset state",
+	 A_RES_Pin,  0, {{MODE_SLAVE, OUTPUT, HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}}, EV_A_RES, EV_D_RES},
+      {  "MAPRQM", "Mega --> Shield", "  - Mega is not providing memory (Flash and RAM) contents (real hardware is mapped)",
+	 MAPRQM_Pin, 0, {{MODE_SLAVE, OUTPUT, HIGH},{MODE_MEGA_MASTER, OUTPUT, LOW }}, EV_A_MAPRQM, EV_D_MAPRQM},
+      {  "MAPRQI", "Mega --> Shield", "  - Mega is not providing IO (GPIO, CTC) contents (real hardware is mapped)",
+	 MAPRQI_Pin, 0, {{MODE_SLAVE, OUTPUT, LOW },{MODE_MEGA_MASTER, OUTPUT, LOW }},  EV_A_MAPRQI, EV_D_MAPRQI},
+      {  "    X1", "Z80  --> Mega",   "    - Asserted, means Z80 is doing an opcode fetch cycle",
+	 M1_Pin,     0, {{MODE_SLAVE, INPUT,  HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}},  EV_A_M1, EV_D_M1},
+      {  "---",    "",                "",
+	 0,          0, {{MODE_SLAVE, INPUT,  HIGH},{MODE_MEGA_MASTER, OUTPUT, HIGH}},  0, 0},
+    };
 
 // Indices for signals
 enum
   {
     SIG_BUSREQ,
     SIG_BUSACK,
+    SIG_M1,
     SIG_MREQ,
     SIG_IOREQ,
+    SIG_RFSH,
     SIG_WR,
     SIG_RD,
-    SIG_M1,
-    SIG_RFSH,
     SIG_NMI,
     SIG_INT,
     SIG_WAIT,
@@ -263,19 +486,19 @@ enum
 
 struct TRANSITION
 {
-  int stim;
-  int next_state;
+  const int stim;
+  const int next_state;
 };
 
 #define NUM_ENTRY 2
-#define NUM_TRANS 3
+#define NUM_TRANS 4
 
 struct STATE
 {
-  int        statenum;
-  String     state_name;
-  FPTR       entry[NUM_ENTRY];
-  TRANSITION trans[NUM_TRANS];
+  const int        statenum;
+  const String     state_name;
+  const FPTR       entry[NUM_ENTRY];
+  const TRANSITION trans[NUM_TRANS];
 };
 
 int current_state;
@@ -289,14 +512,18 @@ enum
     STATE_OP4,
     STATE_OP5,
     STATE_RFSH1,
-    STATE_RFSH2,
     STATE_MEM1,
     STATE_MEM_RD,
     STATE_MEM_WR,
-    STATE_MEM_WR_END,
     STATE_MEM_RD_END,
-    
-    
+    STATE_MEM_WR_END,
+    STATE_IO1,
+    STATE_IO_RD,
+    STATE_IO_WR,
+    STATE_IO_RD_END,
+    STATE_IO_WR_END,
+
+    STATE_NULL,             // Used for initialisation
     STATE_NUM
   };
 
@@ -321,12 +548,34 @@ INSTRUCTION instruction[256] =
 //
 struct Z80_REGISTERS
 {
-  uint16_t PC;
+  uint16_t pc;
+  uint16_t sp;
+  uint16_t af;
+  uint16_t hl;
+  uint16_t de;
+  uint16_t bc;
+  uint16_t ix;
+  uint16_t iy;
+  uint16_t afp;   // AF' or AF prime -> afp
+  uint16_t hlp;
+  uint16_t dep;
+  uint16_t bcp;
+
 
   // Define the rest when we can do somthing with them
 };
 
 Z80_REGISTERS z80_registers;
+
+////////////////////////////////////////////////////////////////////////////////
+//
+// Instruction trace
+//
+// Traces address and data values while code executes
+// Can be used for general debug and also used by the register dump facility
+//
+//
+
 
 ////////////////////////////////////////////////////////////////////////////////
 //
@@ -349,6 +598,39 @@ void entry_opcode3()
   inst_inst[0] = data_state();
 }
 
+// If we are stopping when M1 asserted then stop
+void entry_opcode1()
+{
+
+  // Only stop on every M1 if we aren't stopping on full instructions
+  // Full stopping on full instructions, we disallow stopping on M1 if the opcode is
+  // a prefix type
+   
+  if ( stop_on_m1 && opcode_traced && (stop_on_full_instruction && (!prefix_opcode)) )
+    {
+      if ( (fast_to_address == -1) || ((fast_to_address != -1) && (fast_to_address == addr_state())) )
+	{
+	  fast_mode = false;
+	  quiet = false;
+
+	  // Turn off stopping on M1, it's always a one-shot
+	  stop_on_m1 = false;
+	}
+    }
+
+  // New opcode, so clear the opcode traced flag as this opcode hasn't been
+  opcode_traced = false;
+
+}
+
+void entry_trc_op()
+{
+  // Trace opcode
+  trace_rec(TRT_OP_RD);
+
+  opcode_traced = true;
+}
+
 const STATE bsm[] =
   {
     { 
@@ -359,18 +641,22 @@ const STATE bsm[] =
       },
       {
 	{EV_A_M1,   STATE_OP1},
-	{EV_A_MREQ, STATE_MEM1},
 	{EV_A_RFSH, STATE_RFSH1},
+	{EV_A_MREQ, STATE_MEM1},
+	{EV_A_IOREQ, STATE_IO1},
       }
     },
     { 
       STATE_OP1,
       "Opcode 1",
       {
-	entry_null,
+	entry_opcode1,
       },
       {
 	{EV_A_MREQ, STATE_OP2},
+	{EV_A_NULL, STATE_NULL},
+	{EV_A_NULL, STATE_NULL},
+	{EV_A_NULL, STATE_NULL},
       }
     },
     { 
@@ -381,6 +667,9 @@ const STATE bsm[] =
       },
       {
 	{EV_A_RD, STATE_OP3},
+	{EV_A_NULL, STATE_NULL},
+	{EV_A_NULL, STATE_NULL},
+	{EV_A_NULL, STATE_NULL},
       }
     },
     { 
@@ -388,10 +677,14 @@ const STATE bsm[] =
       "Opcode Read",
       {
 	// same as a memory access
-	entry_mem_rd,
+	entry_op_rd,
+	entry_trc_op,
       },
       {
+	{EV_A_RFSH, STATE_RFSH1},
 	{EV_D_RD, STATE_OP4},
+	{EV_A_NULL, STATE_NULL},
+	{EV_A_NULL, STATE_NULL},
       }
     },
     { 
@@ -402,6 +695,9 @@ const STATE bsm[] =
       },
       {
 	{EV_D_M1, STATE_IDLE},
+	{EV_A_NULL, STATE_NULL},
+	{EV_A_NULL, STATE_NULL},
+	{EV_A_NULL, STATE_NULL},
       }
     },
     { 
@@ -412,6 +708,9 @@ const STATE bsm[] =
       },
       {
 	{EV_A_RD, STATE_OP3},
+	{EV_A_NULL, STATE_NULL},
+	{EV_A_NULL, STATE_NULL},
+	{EV_A_NULL, STATE_NULL},
       }
     },
     { 
@@ -422,6 +721,9 @@ const STATE bsm[] =
       },
       {
 	{EV_D_RFSH, STATE_IDLE},
+	{EV_A_NULL, STATE_NULL},
+	{EV_A_NULL, STATE_NULL},
+	{EV_A_NULL, STATE_NULL},
       }
     },
     //------------------------------------------------------------------------------
@@ -438,6 +740,8 @@ const STATE bsm[] =
       {
 	{EV_A_RD, STATE_MEM_RD},
 	{EV_A_WR, STATE_MEM_WR},
+	{EV_A_NULL, STATE_NULL},
+	{EV_A_NULL, STATE_NULL},
       }
     },
     { 
@@ -445,19 +749,26 @@ const STATE bsm[] =
       "Memory Read Access",
       {
 	entry_mem_rd,
+	entry_trc_mem_rd,
       },
       {
 	{EV_D_MREQ, STATE_MEM_RD_END},
+	{EV_A_NULL, STATE_NULL},
+	{EV_A_NULL, STATE_NULL},
+	{EV_A_NULL, STATE_NULL},
       }
     },
     { 
       STATE_MEM_WR,
       "Memory Write Access",
       {
-	entry_null,
+	entry_trc_mem_wr,
       },
       {
 	{EV_D_MREQ, STATE_MEM_WR_END},
+	{EV_A_NULL, STATE_NULL},
+	{EV_A_NULL, STATE_NULL},
+	{EV_A_NULL, STATE_NULL},
       }
     },
     { 
@@ -468,6 +779,9 @@ const STATE bsm[] =
       },
       {
 	{EV_D_RD, STATE_IDLE},
+	{EV_A_NULL, STATE_NULL},
+	{EV_A_NULL, STATE_NULL},
+	{EV_A_NULL, STATE_NULL},
       }
     },
     { 
@@ -478,8 +792,83 @@ const STATE bsm[] =
       },
       {
 	{EV_D_WR, STATE_IDLE},
+	{EV_A_NULL, STATE_NULL},
+	{EV_A_NULL, STATE_NULL},
+	{EV_A_NULL, STATE_NULL},
       }
     },
+#if 1
+    //------------------------------------------------------------------------------
+    // IO accesses
+    //
+    // 
+    //
+    { 
+      STATE_IO1,
+      "IO Access",
+      {
+	entry_null,
+      },
+      {
+	{EV_A_RD, STATE_IO_RD},
+	{EV_A_WR, STATE_IO_WR},
+	{EV_A_NULL, STATE_NULL},
+	{EV_A_NULL, STATE_NULL},
+      }
+    },
+    { 
+      STATE_IO_RD,
+      "IO Read Access",
+      {
+	entry_trc_io_rd,
+      },
+      {
+	{EV_D_IOREQ, STATE_IO_RD_END},
+	{EV_A_NULL, STATE_NULL},
+	{EV_A_NULL, STATE_NULL},
+	{EV_A_NULL, STATE_NULL},
+      }
+    },
+    { 
+      STATE_IO_WR,
+      "IO Write Access",
+      {
+	entry_trc_io_wr,
+      },
+      {
+	{EV_D_IOREQ, STATE_IO_WR_END},
+	{EV_A_NULL, STATE_NULL},
+	{EV_A_NULL, STATE_NULL},
+	{EV_A_NULL, STATE_NULL},
+      }
+    },
+    { 
+      STATE_IO_RD_END,
+      "IO Read Access END",
+      {
+	entry_null,
+      },
+      {
+	{EV_D_RD, STATE_IDLE},
+	{EV_A_NULL, STATE_NULL},
+	{EV_A_NULL, STATE_NULL},
+	{EV_A_NULL, STATE_NULL},
+      }
+    },
+    { 
+      STATE_IO_WR_END,
+      "IO Write Access End",
+      {
+	entry_null,
+      },
+      {
+	{EV_D_WR, STATE_IDLE},
+	{EV_A_NULL, STATE_NULL},
+	{EV_A_NULL, STATE_NULL},
+	{EV_A_NULL, STATE_NULL},
+      }
+    },
+#endif    
   };
 
 void entry_null()
@@ -489,7 +878,7 @@ void entry_null()
 void entry_mem1()
 {
   
-  // If the address is in the range of the RAM chip then we enableit.
+  // If the address is in the range of the RAM chip then we enable it.
   // This is because the Mega doesn't really have enough memory to emulate the RAM, so we use the real chip
   if ( addr_state() >= 0x8000 )
     {
@@ -504,42 +893,357 @@ void entry_mem1()
 
       if ( !fast_mode )
 	{
-	  Serial.print("Allowing RAM to put data on bus");
+	  Serial.print(F("Allowing RAM to put data on bus"));
 	  Serial.print(addr_state(), HEX);
 	  Serial.print(": ");
 	  Serial.print(data_state(), HEX);
 	}
     }
 
-    // If it's a flash access then we will drive data if WR is asserted
+  // If it's a flash access then we will drive data if WR is asserted
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+// Examine the II trace and find register values
+// This code is specific to the register dump II code, change one and the other needs
+// examination
+
+void get_register_values_from_trace()
+{
+  int i;
+  unsigned int twobyteval;
+  int shift_opcode = 0x00;       // Holds last shift opcode
+  boolean exx_flag = false;      // Holds flag that says which register set we are using in our code
+  boolean grab_pc = true;        // Only use first PUSH AF to grab PC and SP
+  
+  for(i=0; i<II_TRACE_SIZE; i++)
+    {
+      // Speculatively calculate values
+      twobyteval = ii_trace[(i+2) % II_TRACE_SIZE].data + ((ii_trace[(i+1) % II_TRACE_SIZE].data) <<8);
+      switch(ii_trace[i].type)
+	{
+	case TRT_OP_RD:
+	  switch(ii_trace[i].data)
+	    {
+	      // exx instruction
+	      // For register display (and code) the current register set is always the non prime one (no ')
+	      // The prime set (AF' etc) are always the ones you get after an exx instruction.
+	      // This makes sense as if you display the registers inside an ISR that has done an exx at the start then the
+	      // non prime register set is th eone you are working with and the saved context is the prime set
+	      // So, we don't need to know if the code that is running has done a previous exx
+	      // We do need to know when the code in the ii trace has done an exx though, as we need to
+	      // dipslay the values in the correct place
+	    case 0xD9:
+	      exx_flag = !exx_flag;
+	      break;
+	      
+	      // This is a shift opcode that indicates use IX instead of HL
+	    case 0xDD:
+	    case 0xFD:
+	      shift_opcode = ii_trace[i].data;
+	      break;
+	      
+	      // This is the first instruction in the ii code, we can get the PC and SP from this instruction
+	    case 0xF5:     // PUSH AF
+	      // Send AF value
+	      if ( exx_flag )
+		{
+		  Serial.print(F("^0AF':"));
+		  z80_registers.afp = twobyteval;
+		  Serial.print( to_hex(z80_registers.afp, 4) );
+		  Serial.print(F("$"));
+		}
+	      else
+		{
+		  Serial.print(F("^0AF :"));
+		  z80_registers.af = twobyteval;
+		  Serial.print( to_hex(z80_registers.af, 4) );
+		  Serial.print(F("$"));
+		}
+
+	      // Only get PC and SP for first PUSH AF
+	      if ( grab_pc )
+		{
+		  // get PC, it's the instruction address
+		  Serial.print(F("^0PC :"));
+		  z80_registers.pc = ii_trace[i].addr;;
+		  Serial.print( to_hex(z80_registers.pc, 4) );
+		  Serial.print(F("$"));
+		  
+		  // get SP, it's the address the first byte was written to plus 1
+		  Serial.print(F("^0SP :"));
+		  z80_registers.sp = ii_trace[(i+1) % II_TRACE_SIZE].addr+1;
+		  Serial.print( to_hex(z80_registers.sp, 4) );
+		  Serial.print(F("$"));
+		  grab_pc = false;
+		}
+	      break;
+	      
+	    case 0xE1:
+	      // we don't process the pop ix.iy, but need to clear the flags
+	      shift_opcode = 0x00;
+	      break;
+	      
+	    case 0xE5:     // PUSH HL
+	      switch(shift_opcode)
+		{
+		case 0x00:    // No previous shift opcode		  
+		  // Send HL value
+		  if ( exx_flag )
+		    {
+		      Serial.print(F("^0HL':"));
+		      z80_registers.hlp = twobyteval;
+		      Serial.print( to_hex(z80_registers.hlp, 4) );
+		      Serial.print(F("$"));
+		    }
+		  else
+		    {
+		      Serial.print(F("^0HL :"));
+		      z80_registers.hl = twobyteval;
+		      Serial.print( to_hex(z80_registers.hl, 4) );
+		      Serial.print(F("$"));
+		    }
+		  break;
+		  
+		case 0xDD:
+		  // Send IX value
+		  Serial.print(F("^0IX :"));
+		  z80_registers.ix = twobyteval;
+		  Serial.print( to_hex(z80_registers.ix, 4) );
+		  Serial.print(F("$"));
+		  shift_opcode = 0x00; 
+		  break;
+		  
+		case 0xFD:
+		  // Send IY value
+		  Serial.print(F("^0IY :"));
+		  z80_registers.iy = twobyteval;
+		  Serial.print( to_hex(z80_registers.iy, 4) );
+		  Serial.print(F("$"));
+		  shift_opcode = 0x00; 
+		  break;
+		}
+	      break;
+
+	    case 0xC5:     // PUSH BC
+	      // Send BC value
+	      if (exx_flag )
+		{
+		  Serial.print(F("^0BC':"));
+		  z80_registers.bcp = twobyteval;
+		  Serial.print( to_hex(z80_registers.bcp, 4) );
+		  Serial.print(F("$"));
+		}
+	      else
+		{
+		  Serial.print(F("^0BC :"));
+		  z80_registers.bc = twobyteval;
+		  Serial.print( to_hex(z80_registers.bc, 4) );
+		  Serial.print(F("$"));
+		}
+	      break;
+
+	    case 0xD5:     // PUSH DE
+	      // Send DE value
+	      if (exx_flag )
+		{
+		  Serial.print(F("^0DE':"));
+		  z80_registers.dep = twobyteval;
+		  Serial.print( to_hex(z80_registers.dep, 4) );
+		  Serial.print(F("$"));
+		}
+	      else
+		{
+		  Serial.print(F("^0DE :"));
+		  z80_registers.de = twobyteval;
+		  Serial.print( to_hex(z80_registers.de, 4) );
+		  Serial.print(F("$"));
+		}
+	      break;
+	    }
+	  
+	  break;
+	}
+    }
+}
+
+unsigned int get_instruction_length(BYTE opcode)
+{
+  int i;
+  
+  if( opcode ==0 )
+    {
+      return(1);
+    }
+  
+  for(i=0; instruction_length[i*2] != 0; i++)
+    {
+      if( instruction_length[i*2] == opcode )
+	{
+	  return(instruction_length[i*2+1]);
+	}
+    }
+  
+  // Default to one byte
+  return(1);
+}
+
+// Inserts instructions between instructions
+
+void entry_core_ii_emulate()
+{
+  //Serial.print("II:");
+  //Serial.println(inter_inst_em_count);
+
+  inter_inst_em_count--;
+  
+  // We get data from our emulated code whatever the address
+  // Emulate flash
+  // Disable hardware so we can drive the bus
+  digitalWrite(MAPRQM_Pin, HIGH);
+
+  data_bus_outputs();
+      
+  set_data_state(inter_inst_code[inter_inst_index]);
+  
+  
+  //Serial.print(F("Putting ii data on bus "));
+  //Serial.print(addr_state(), HEX);
+  //Serial.print(" ");
+  //Serial.print(data_state(), HEX);
+  //Serial.print(inter_inst_code[inter_inst_index], HEX);
+
+  inter_inst_index++;
+
+  if ( inter_inst_index >= inter_inst_code_length )
+    {
+      // End of inter inst code, turn everything off
+      // We do, however want to trace this transfer in the ii_trace buffer so leave the ii_trace flag set until the next iteration
+      fast_mode = false;
+      inter_inst = false;
+      uninterruptible_command = false;
+      
+      quiet = false;
+
+      // We have run the code between instructions, we may have to process the result
+      if( ii_process_registers )
+	{
+	  // Process trace to get register values
+	  get_register_values_from_trace();
+	}
+      return;
+    }
+  
 }
 
 // Memory read cycle
 void entry_mem_rd()
 {
+  // Instruction data bytes  come from flash (or perhaps emulated by mega unless we are inserting code between instructions
+  // then we get code from the inter_inst array until it runs out
+   // have we stopped emulating the instruction?
+  if( inter_inst_em_count == 0 )
+    {
+      // Enable hardware so it can drive the bus
+      digitalWrite(MAPRQM_Pin, LOW);
+      
+      data_bus_inputs();
+    }
+  else
+    {
+      if ( inter_inst && (inter_inst_code != NULL) && (inter_inst_em_count > 0) )
+	{
+	  entry_core_ii_emulate();
+	  
+	}
+    }
+
 #if ENABLE_MEGA_ROM_EMULATION
   // We get data from our emulated flash.
   if ( addr_state() < 0x8000 )
     {
       // Emulate flash
+      // Disable hardware so we can drive the bus
+      digitalWrite(MAPRQM_Pin, HIGH);
       data_bus_outputs();
       
       set_data_state(example_code[addr_state()]);
 
-      if ( !fast_mode )
-	{
-	  Serial.print("Putting data on bus ");
-	  Serial.print(addr_state(), HEX);
-	  Serial.print(" ");
-	  Serial.print(example_code[addr_state()], HEX);
-	}
+      Serial.print(F("Putting ii data on bus "));
+      Serial.print(addr_state(), HEX);
+      Serial.print(" ");
+      Serial.print(example_code[addr_state()], HEX);
+
     }
 #endif
+}
+
+// Memory read cycle
+void entry_op_rd()
+{
+  int i;
+  
+  // Opcodes come rom flash (or perhaps emulated by mega unless we are inserting code between instructions
+  // then we get code from the inter_inst array until it runs out
+  if ( inter_inst && (inter_inst_code != NULL) )
+    {
+      // Find out how many opcode bytes to emulate after this one
+      inter_inst_em_count = get_instruction_length(inter_inst_code[inter_inst_index]);
+      entry_core_ii_emulate();
+      
+    }
+  else
+    {
+      prefix_opcode = false;
+      
+      // For non-injected instructions we set a flag if this is a prefix opcode
+      for(i=0; i<NUM_PREFIX_OPCODES;i++)
+	{
+	  if ( data_state() == prefix_opcodes[i] )
+	    {
+	      prefix_opcode = true;
+	      break;
+	    }
+	}
+    }
+  
+}
+
+
+void entry_trc_mem_rd()
+{
+  // Trace
+  
+  trace_rec(TRT_MEM_RD);
+
+}
+
+void entry_trc_mem_wr()
+{
+  // Trace
+  trace_rec(TRT_MEM_WR);
+}
+
+void entry_trc_io_rd()
+{
+  // Trace
+  trace_rec(TRT_IO_RD);
+}
+
+void entry_trc_io_wr()
+{
+  // Trace
+  trace_rec(TRT_IO_WR);
 }
 
 void entry_mem_rd_end()
 {
   // release the data bus, either if we have driven it or the RAM/flash chip has, it makes no difference
+
+  // Enable the memory hardware again
+  digitalWrite(MAPRQM_Pin, LOW);
+
   data_bus_inputs();
 }
 
@@ -602,18 +1306,29 @@ void reset_z80()
 
   // The Z80 user manual says we need 3 full clock for the reset to complete
   for( int i=0; i<3; i++ )
-  {
-    t_state();
-  }
+    {
+      t_state();
+    }
 
   // Release reset
   deassert_signal(SIG_RES);
 
-  z80_registers.PC = 0;
+  z80_registers.pc = 0;
+  
 }
 
 // Do a half t state
 int clk = 0;
+
+#if ENABLE_TIMINGS
+#define NUM_TIMED_CLKS 20
+
+// Variables where we store clock rate timing information
+unsigned long last_clk = 0;
+unsigned long now_clk = 0;
+unsigned long last_clks[NUM_TIMED_CLKS];
+int last_clks_i = 0;
+#endif
 
 void half_t_state()
 {
@@ -630,6 +1345,13 @@ void half_t_state()
     }
   
   clk = !clk;
+
+#if ENABLE_TIMINGS
+  now_clk = millis();
+  last_clks[last_clks_i++] = now_clk-last_clk;
+  last_clk = now_clk;
+  last_clks_i = last_clks_i % NUM_TIMED_CLKS;
+#endif
 }
 
 // Do a clock cycle or T state (high then low)
@@ -653,7 +1375,7 @@ void bus_request()
   
   while(  (signal_state("BUSACK") == HIGH) && !Serial.available())
     {
-      Serial.println("Clocking..");
+      Serial.println(F("Clocking.."));
       t_state();
     }
   
@@ -763,12 +1485,13 @@ BYTE read_cycle(int address, int signal)
 
   // Assert required signals
   assert_signal(signal);
-  assert_signal(SIG_RD);
 
+  assert_signal(SIG_RD);
+  
   // Clock again
   t_state();
   t_state();
-
+  
   // read data
   data_bus_inputs();
   data = data_state();
@@ -816,7 +1539,7 @@ void write_cycle(int address, BYTE data, int signal)
   deassert_signal(signal);
 
   t_state();
-// Couple of extra clocks 
+  // Couple of extra clocks 
   t_state();
   t_state();
   
@@ -932,6 +1655,9 @@ void initialise_z80_for_control()
 
 unsigned int addr_state()
 {
+#if ENABLE_DIRECT_PORT_ACCESS
+  return(PINA + (PINB << 8));
+#else
   unsigned int a = 0;
 
   // Get all the address lines and accumulate the address
@@ -953,12 +1679,17 @@ unsigned int addr_state()
 	}
     }
   
-  return(a);  
+  return(a);
+#endif
 }
 
 // drive address bus
 void set_addr_state(int address)
 {
+#if ENABLE_DIRECT_PORT_ACCESS
+  PORTA = address & 0xff;
+  PORTB = (address & 0xff00) >> 8;
+#else
   // Set all the address lines
   for(int i=15; i>=0; i--)
     {
@@ -974,14 +1705,33 @@ void set_addr_state(int address)
 	  break;
 	}
     }
+#endif
+}
+
+// Inverts bits in an 8 bit value
+unsigned int invert_byte(unsigned int x)
+{
+#define BIT(X, BITNUM, NEWBITNUM)  (((X & (1<<BITNUM)) >> BITNUM) << NEWBITNUM)
+
+  return( BIT(x,0,7)+
+	  BIT(x,1,6)+
+	  BIT(x,2,5)+
+	  BIT(x,3,4)+
+	  BIT(x,4,3)+
+	  BIT(x,5,2)+
+	  BIT(x,6,1)+
+	  BIT(x,7,0));
 }
 
 // Returns data bus state, ie data on bus
 
 unsigned int data_state()
 {
+#if ENABLE_DIRECT_PORT_ACCESS
+  return ( invert_byte(PINC) );
+#else
   unsigned int a = 0;
-
+  
   // Get all the data lines and accumulate the data
   for(int i=7; i>=0; i--)
     {
@@ -999,15 +1749,20 @@ unsigned int data_state()
 	  break;
 	}
     }
-  
-  return(a);  
+
+  return(a);
+#endif
 }
 
 // Sets data bus value
 void set_data_state(unsigned int x)
 {
+#if ENABLE_DIRECT_PORT_ACCESS
+  PORTC = invert_byte(x);
+#else
+  
   unsigned int a = x;
-
+  
   // Get all the data lines and accumulate the data
   for(int i=0; i<8; i++)
     {
@@ -1024,6 +1779,7 @@ void set_data_state(unsigned int x)
 	}
       a >>= 1;
     }
+#endif
 }
 
 
@@ -1064,26 +1820,11 @@ int signal_state(String signal)
 	  state = digitalRead(signal_list[i].pin);
 
 	  // Update current state
-	  signal_list[i].current_state = state;
+	  //signal_list[i].current_state = state;
 	}
     }
   
   return(state);
-}
-
-void dump_z80_registers()
-{
-  if( quiet)
-    {
-      return;
-    }
-
-  Serial.println("\nZ80 Registers (which are known): ");
-
-  Serial.println("=== ====");
-  Serial.print("PC: ");
-  Serial.println( to_hex(z80_registers.PC, 4) );
-  Serial.println("=== ====\n");
 }
 
 void dump_misc_signals()
@@ -1157,9 +1898,9 @@ void dump_misc_signals()
 	  Serial.print(signal_list[i].description+")");
 
 	  if( val == LOW )
-	  {
-	    Serial.print(signal_list[i].assertion_note);
-	  }
+	    {
+	      Serial.print(signal_list[i].assertion_note);
+	    }
 	  Serial.println("");
 	}
     }
@@ -1226,6 +1967,7 @@ void signal_scan()
     {
       // If read state is different to current state then generate events
       int state  = digitalRead(signal_list[i].pin);
+
       if ( state != signal_list[i].current_state )
 	{
 	  if ( state == HIGH )
@@ -1240,7 +1982,6 @@ void signal_scan()
 	    }
 	  signal_list[i].current_state = state;
 	}
-      
     }
 }
 
@@ -1257,7 +1998,7 @@ void signal_event(int sig, int sense)
     {
       if ( !quiet )
 	{
-	  Serial.println(" ASSERT");
+	  Serial.println(F(" ASSERT"));
 	}
       run_bsm(signal_list[sig].assert_ev);
     }
@@ -1288,14 +2029,15 @@ int find_state_index(int state)
     }
 
   // Error, default to idle
-  Serial.println("***ERROR state not found ***");
+  Serial.println(F("***ERROR state not found ***"));
   return(STATE_IDLE);
 }
 
 void run_bsm(int stim)
 {
+ 
   int current_state_i = find_state_index(current_state);
-
+  
   // A stimulus has come in, put it into the bsm
   for(int i=0; i<NUM_TRANS; i++)
     {
@@ -1343,9 +2085,9 @@ void cmd_grab_z80(String cmd)
 
   initialise_z80_for_control();
 
-  Serial.println("\n-------------------------------------------------------------------");
-  Serial.println("The Arduino has grabbed the Z80, the Z80 is now the Arduino's slave");
-  Serial.println("-------------------------------------------------------------------");
+  Serial.println(F("\n-------------------------------------------------------------------"));
+  Serial.println(F("The Arduino has grabbed the Z80, the Z80 is now the Arduino's slave"));
+  Serial.println(F("-------------------------------------------------------------------"));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1369,20 +2111,18 @@ void cmd_dump_signals()
   data = data_state();
     
   if( signal_state("M1") == HIGH )
-    Serial.print("Addr:");  
+    Serial.print(F("Addr:"));  
   else
-    Serial.print("PC:");  
+    Serial.print(F("PC:"));  
 
   Serial.print(to_hex(address, 4));
 
-  Serial.print("  Data:");
+  Serial.print(F("  Data:"));
   Serial.print(to_hex(data, 2));
   Serial.println("\n");
   
   // Control signals on bus
   dump_misc_signals();
-
-  dump_z80_registers();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1395,8 +2135,9 @@ void cmd_dump_signals()
 // Test Z80 code
   
 // Writes to RAM then reads it back
-BYTE example_code_ram_chk[] =
+const BYTE example_code_ram_chk[] =
   {
+    0x31, 0x00, 0x90,    // set stack up
     0x3e, 0xaa,          // LOOP:   LD A, 03EH
     0x21, 0x34, 0x82,    //         LD HL 01234H
     0x77,                //         LD (HL), A
@@ -1406,7 +2147,7 @@ BYTE example_code_ram_chk[] =
   };
 
 // Turns backlight off
-BYTE example_code_lcd_bl_off[] =
+const BYTE example_code_lcd_bl_off[] =
   {
     0x0e, IO_ADDR_PIO1_BC,    // LOOP:   LD C, 60H
     0x3e, 0xcf,            //         LD  A, Mode3 control word
@@ -1422,100 +2163,100 @@ BYTE example_code_lcd_bl_off[] =
   };
 
 // Turns backlight off
-BYTE example_code_lcd_bl_flash[] =
+const BYTE example_code_lcd_bl_flash[] =
   {
-                    0x31,  0x00,  0x90,  //   0000 : 			LD SP, 9000H 
-                           0x0e,  0x83,  //   0003 : 			LD   C, IO_ADDR_PIO1_BC 
-                           0x16,  0x81,  //   0005 : 			LD   D, IO_ADDR_PIO1_BD 
-                           0x26,  0xfb,  //   0007 : 			LD   H, 0FBH 
-                           0x2e,  0x00,  //   0009 : 			LD   L, 00H 
-                    0xcd,  0x3f,  0x00,  //   000b : 			CALL PIOINIT 
-                           0x0e,  0x83,  //   000e : 			LD   C, IO_ADDR_PIO1_BC 
-                           0x16,  0x81,  //   0010 : 			LD   D, IO_ADDR_PIO1_BD 
-                           0x26,  0xff,  //   0012 : 			LD   H, 0FFH 
-                           0x2e,  0x00,  //   0014 : 			LD   L, 00H 
-                    0xcd,  0x3f,  0x00,  //   0016 : 			CALL PIOINIT 
-                           0x0e,  0x83,  //   0019 : 			LD C, IO_ADDR_PIO1_BC 
-                           0x3e,  0xcf,  //   001b : 			LD A, 0CFH 
-                           0xed,  0x79,  //   001d : 			OUT (C),A 
-                           0x0e,  0x83,  //   001f : 			LD C, IO_ADDR_PIO1_BC 
-                           0x3e,  0xfb,  //   0021 : 			LD A, 0FBH 
-                           0xed,  0x79,  //   0023 : 			OUT (C),A 
-                           0x0e,  0x81,  //   0025 : 			LD C, IO_ADDR_PIO1_BD 
-                           0x3e,  0x00,  //   0027 : 			LD A, 00H 
-                           0xed,  0x79,  //   0029 : 			OUT (C),A 
-                           0x0e,  0x83,  //   002b : 			LD C, IO_ADDR_PIO1_BC 
-                           0x3e,  0xcf,  //   002d : 			LD A, 0CFH 
-                           0xed,  0x79,  //   002f : 			OUT (C),A 
-                           0x0e,  0x83,  //   0031 : 			LD C, IO_ADDR_PIO1_BC 
-                           0x3e,  0xff,  //   0033 : 			LD A, 0FFH 
-                           0xed,  0x79,  //   0035 : 			OUT (C),A 
-                           0x0e,  0x81,  //   0037 : 			LD C, IO_ADDR_PIO1_BD 
-                           0x3e,  0x00,  //   0039 : 			LD A, 00H 
-                           0xed,  0x79,  //   003b : 			OUT (C),A 
-                           0x18,  0xc4,  //   003d : 			JR START 
-                           0x3e,  0xcf,  //   003f : 			LD A, 0CFH 
-                           0xed,  0x79,  //   0041 : 			OUT (C), A 
-                                  0x7c,  //   0043 : 				LD A, H 
-                           0xed,  0x79,  //   0044 : 			OUT (C), A 
-                                  0x7d,  //   0046 : 				LD A, L 
-                                  0x4a,  //   0047 : 				LD C, D 
-                           0xed,  0x79,  //   0048 : 			OUT (C), A 
-                                  0xc9,  //   004a : 				RET
+    0x31,  0x00,  0x90,  //   0000 : 			LD SP, 9000H 
+    0x0e,  0x83,  //   0003 : 			LD   C, IO_ADDR_PIO1_BC 
+    0x16,  0x81,  //   0005 : 			LD   D, IO_ADDR_PIO1_BD 
+    0x26,  0xfb,  //   0007 : 			LD   H, 0FBH 
+    0x2e,  0x00,  //   0009 : 			LD   L, 00H 
+    0xcd,  0x3f,  0x00,  //   000b : 			CALL PIOINIT 
+    0x0e,  0x83,  //   000e : 			LD   C, IO_ADDR_PIO1_BC 
+    0x16,  0x81,  //   0010 : 			LD   D, IO_ADDR_PIO1_BD 
+    0x26,  0xff,  //   0012 : 			LD   H, 0FFH 
+    0x2e,  0x00,  //   0014 : 			LD   L, 00H 
+    0xcd,  0x3f,  0x00,  //   0016 : 			CALL PIOINIT 
+    0x0e,  0x83,  //   0019 : 			LD C, IO_ADDR_PIO1_BC 
+    0x3e,  0xcf,  //   001b : 			LD A, 0CFH 
+    0xed,  0x79,  //   001d : 			OUT (C),A 
+    0x0e,  0x83,  //   001f : 			LD C, IO_ADDR_PIO1_BC 
+    0x3e,  0xfb,  //   0021 : 			LD A, 0FBH 
+    0xed,  0x79,  //   0023 : 			OUT (C),A 
+    0x0e,  0x81,  //   0025 : 			LD C, IO_ADDR_PIO1_BD 
+    0x3e,  0x00,  //   0027 : 			LD A, 00H 
+    0xed,  0x79,  //   0029 : 			OUT (C),A 
+    0x0e,  0x83,  //   002b : 			LD C, IO_ADDR_PIO1_BC 
+    0x3e,  0xcf,  //   002d : 			LD A, 0CFH 
+    0xed,  0x79,  //   002f : 			OUT (C),A 
+    0x0e,  0x83,  //   0031 : 			LD C, IO_ADDR_PIO1_BC 
+    0x3e,  0xff,  //   0033 : 			LD A, 0FFH 
+    0xed,  0x79,  //   0035 : 			OUT (C),A 
+    0x0e,  0x81,  //   0037 : 			LD C, IO_ADDR_PIO1_BD 
+    0x3e,  0x00,  //   0039 : 			LD A, 00H 
+    0xed,  0x79,  //   003b : 			OUT (C),A 
+    0x18,  0xc4,  //   003d : 			JR START 
+    0x3e,  0xcf,  //   003f : 			LD A, 0CFH 
+    0xed,  0x79,  //   0041 : 			OUT (C), A 
+    0x7c,  //   0043 : 				LD A, H 
+    0xed,  0x79,  //   0044 : 			OUT (C), A 
+    0x7d,  //   0046 : 				LD A, L 
+    0x4a,  //   0047 : 				LD C, D 
+    0xed,  0x79,  //   0048 : 			OUT (C), A 
+    0xc9,  //   004a : 				RET
   };
 
-BYTE example_code_lcd_slow_flash[] =
+const BYTE example_code_lcd_slow_flash[] =
   {
-                                         //   0000 : IO_ADDR_PIO0:   EQU   80H   
-                                         //   0000 : IO_ADDR_PIO0_AD:   EQU   IO_ADDR_PIO0+0   
-                                         //   0000 : IO_ADDR_PIO0_BD:   EQU   IO_ADDR_PIO0+1   
-                                         //   0000 : IO_ADDR_PIO0_AC:   EQU   IO_ADDR_PIO0+2   
-                                         //   0000 : IO_ADDR_PIO0_BC:   EQU   IO_ADDR_PIO0+3   
-                                         //   0000 : IO_ADDR_PIO1:   EQU   80H   
-                                         //   0000 : IO_ADDR_PIO1_AD:   EQU   IO_ADDR_PIO1+0   
-                                         //   0000 : IO_ADDR_PIO1_BD:   EQU   IO_ADDR_PIO1+1   
-                                         //   0000 : IO_ADDR_PIO1_AC:   EQU   IO_ADDR_PIO1+2   
-                                         //   0000 : IO_ADDR_PIO1_BC:   EQU   IO_ADDR_PIO1+3   
-                                         //   0000 : .ORG   0   
-                    0x31,  0x00,  0x90,  //   0000 : LD   SP,9000H   
-                                         //   0003 : ; 
-                           0x0E,  0x83,  //   0003 : START:    LD   C,IO_ADDR_PIO1_BC   
-                           0x3E,  0xCF,  //   0005 : LD   A,0CFH   
-                           0xED,  0x79,  //   0007 : OUT   (C),A   
-                           0x0E,  0x83,  //   0009 : LD   C,IO_ADDR_PIO1_BC   
-                           0x3E,  0xFB,  //   000B : LD   A,0FBH   
-                           0xED,  0x79,  //   000D : OUT   (C),A   
-                           0x0E,  0x83,  //   000F : LD   C,IO_ADDR_PIO1_BC   
-                           0x3E,  0x00,  //   0011 : LD   A,00H   
-                           0xED,  0x79,  //   0013 : OUT   (C),A   
-                    0xCD,  0x2F,  0x00,  //   0015 : CALL   DELAY   
-                                         //   0018 : ; 
-                           0x0E,  0x83,  //   0018 : LD   C,IO_ADDR_PIO1_BC   
-                           0x3E,  0xCF,  //   001A : LD   A,0CFH   
-                           0xED,  0x79,  //   001C : OUT   (C),A   
-                           0x0E,  0x83,  //   001E : LD   C,IO_ADDR_PIO1_BC   
-                           0x3E,  0xFF,  //   0020 : LD   A,0FFH   
-                           0xED,  0x79,  //   0022 : OUT   (C),A   
-                           0x0E,  0x83,  //   0024 : LD   C,IO_ADDR_PIO1_BC   
-                           0x3E,  0x00,  //   0026 : LD   A,00H   
-                           0xED,  0x79,  //   0028 : OUT   (C),A   
-                    0xCD,  0x2F,  0x00,  //   002A : CALL   DELAY   
-                                         //   002D : ; 
-                           0x18,  0xD4,  //   002D : JR   START   
-                           0x26,  0xFF,  //   002F : DELAY:    LD   H,0FFH   
-                                         //   0031 : ; 
-                           0x2E,  0x2F,  //   0031 : LOOPH:    LD   L,0FFH   
-                                  0x2D,  //   0033 : LOOPL:    DEC   L   
-                           0x20,  0xFD,  //   0034 : JR   NZ,LOOPL   
-                           0x25,         //   0036 : H   
-                           0x20,  0xF8,  //   0037 : JR   NZ,LOOPH   
-                                  0xC9,  //   0039 : RET      
+    //   0000 : IO_ADDR_PIO0:   EQU   80H   
+    //   0000 : IO_ADDR_PIO0_AD:   EQU   IO_ADDR_PIO0+0   
+    //   0000 : IO_ADDR_PIO0_BD:   EQU   IO_ADDR_PIO0+1   
+    //   0000 : IO_ADDR_PIO0_AC:   EQU   IO_ADDR_PIO0+2   
+    //   0000 : IO_ADDR_PIO0_BC:   EQU   IO_ADDR_PIO0+3   
+    //   0000 : IO_ADDR_PIO1:   EQU   80H   
+    //   0000 : IO_ADDR_PIO1_AD:   EQU   IO_ADDR_PIO1+0   
+    //   0000 : IO_ADDR_PIO1_BD:   EQU   IO_ADDR_PIO1+1   
+    //   0000 : IO_ADDR_PIO1_AC:   EQU   IO_ADDR_PIO1+2   
+    //   0000 : IO_ADDR_PIO1_BC:   EQU   IO_ADDR_PIO1+3   
+    //   0000 : .ORG   0   
+    0x31,  0x00,  0x90,  //   0000 : LD   SP,9000H   
+    //   0003 : ; 
+    0x0E,  0x83,  //   0003 : START:    LD   C,IO_ADDR_PIO1_BC   
+    0x3E,  0xCF,  //   0005 : LD   A,0CFH   
+    0xED,  0x79,  //   0007 : OUT   (C),A   
+    0x0E,  0x83,  //   0009 : LD   C,IO_ADDR_PIO1_BC   
+    0x3E,  0xFB,  //   000B : LD   A,0FBH   
+    0xED,  0x79,  //   000D : OUT   (C),A   
+    0x0E,  0x83,  //   000F : LD   C,IO_ADDR_PIO1_BC   
+    0x3E,  0x00,  //   0011 : LD   A,00H   
+    0xED,  0x79,  //   0013 : OUT   (C),A   
+    0xCD,  0x2F,  0x00,  //   0015 : CALL   DELAY   
+    //   0018 : ; 
+    0x0E,  0x83,  //   0018 : LD   C,IO_ADDR_PIO1_BC   
+    0x3E,  0xCF,  //   001A : LD   A,0CFH   
+    0xED,  0x79,  //   001C : OUT   (C),A   
+    0x0E,  0x83,  //   001E : LD   C,IO_ADDR_PIO1_BC   
+    0x3E,  0xFF,  //   0020 : LD   A,0FFH   
+    0xED,  0x79,  //   0022 : OUT   (C),A   
+    0x0E,  0x83,  //   0024 : LD   C,IO_ADDR_PIO1_BC   
+    0x3E,  0x00,  //   0026 : LD   A,00H   
+    0xED,  0x79,  //   0028 : OUT   (C),A   
+    0xCD,  0x2F,  0x00,  //   002A : CALL   DELAY   
+    //   002D : ; 
+    0x18,  0xD4,  //   002D : JR   START   
+    0x26,  0xFF,  //   002F : DELAY:    LD   H,0FFH   
+    //   0031 : ; 
+    0x2E,  0x2F,  //   0031 : LOOPH:    LD   L,0FFH   
+    0x2D,  //   0033 : LOOPL:    DEC   L   
+    0x20,  0xFD,  //   0034 : JR   NZ,LOOPL   
+    0x25,         //   0036 : H   
+    0x20,  0xF8,  //   0037 : JR   NZ,LOOPH   
+    0xC9,  //   0039 : RET      
   };
 
 // Writes some code to RAM then jumps to it
 // Code can then be free run
 
-BYTE example_code_ram[] =
+const BYTE example_code_ram[] =
   {
     0x16, 0x07,              //    LD   D,ENDCODE-RAMCODE   
     0x21, 0x00, 0x80,          //     LD   HL,8000H   
@@ -1538,7 +2279,7 @@ BYTE example_code_ram[] =
     
   };
 
-BYTE example_code_bank[] =
+const BYTE example_code_bank[] =
   {
     0x0e, 0xc0,          // LOOP:   LD C, 60H
     0x3e, 0xaa,          //         LD  A, AAH
@@ -1546,342 +2287,754 @@ BYTE example_code_bank[] =
     0xc3, 0x05, 0x00
   };
 
-BYTE example_code_lcd_test[] =
+const BYTE example_code_lcd_test[] =
   {
-                    0x31,  0x00,  0x90,  //   0000 : 		START:	LD  SP, 9000H 
-                           0x0e,  0x82,  //   0003 : 			LD   C, IO_ADDR_PIO1_AC 
-                           0x16,  0x80,  //   0005 : 			LD   D, IO_ADDR_PIO1_AD 
-                           0x26,  0x0f,  //   0007 : 			LD   H, 0FH 
-                           0x2e,  0x00,  //   0009 : 			LD   L, 00H 
-                    0xcd,  0x80,  0x01,  //   000b : 			CALL PIOINIT 
-                           0x0e,  0x83,  //   000e : 			LD   C, IO_ADDR_PIO1_BC 
-                           0x16,  0x81,  //   0010 : 			LD   D, IO_ADDR_PIO1_BD 
-                           0x26,  0xfc,  //   0012 : 			LD   H, 0FCH 
-                           0x2e,  0x00,  //   0014 : 			LD   L, 00H 
-                    0xcd,  0x80,  0x01,  //   0016 : 			CALL PIOINIT 
-                           0x0e,  0x02,  //   0019 : 			LD   C, IO_ADDR_PIO0_AC 
-                           0x16,  0x00,  //   001b : 			LD   D, IO_ADDR_PIO0_AD 
-                           0x26,  0xf8,  //   001d : 			LD   H, 0F8H 
-                           0x2e,  0x01,  //   001f : 			LD   L, AD_CS 
-                    0xcd,  0x80,  0x01,  //   0021 : 			CALL PIOINIT 
-                           0x3e,  0x01,  //   0024 : 			LD   A, AD_CS 
-                    0x32,  0x02,  0xa0,  //   0026 : 			LD   (SHADOW_AD), A 
-                           0x3e,  0x00,  //   0029 : 			LD   A, 0 
-                    0x32,  0x00,  0xa0,  //   002b : 			LD   (SHADOW_A), A 
-                           0x3e,  0x00,  //   002e : 			LD   A, 0 
-                    0x32,  0x01,  0xa0,  //   0030 : 			LD   (SHADOW_B), A 
-                    0xcd,  0x8c,  0x01,  //   0033 : 			CALL RS_LOW 
-                    0xcd,  0xac,  0x01,  //   0036 : 			CALL E_LOW 
-                    0xcd,  0x75,  0x01,  //   0039 : 		      	CALL DELAY		; 
-                           0x16,  0x03,  //   003c : 			LD   D, 03H 
-                    0xcd,  0x16,  0x02,  //   003e : 			CALL SDATA4 
-                    0xcd,  0x75,  0x01,  //   0041 : 		     	CALL DELAY 
-                           0x16,  0x03,  //   0044 : 			LD   D, 03H 
-                    0xcd,  0x16,  0x02,  //   0046 : 			CALL SDATA4 
-                    0xcd,  0x75,  0x01,  //   0049 : 		     	CALL DELAY 
-                           0x16,  0x03,  //   004c : 		       LD   D, 03H 
-                    0xcd,  0x16,  0x02,  //   004e : 			CALL SDATA4 
-                    0xcd,  0x75,  0x01,  //   0051 : 		     	CALL DELAY 
-                           0x16,  0x02,  //   0054 : 		       	LD   D, 02H 
-                    0xcd,  0x16,  0x02,  //   0056 : 			CALL SDATA4 
-                    0xcd,  0x75,  0x01,  //   0059 : 		     	CALL DELAY 
-                           0x16,  0x0e,  //   005c : 			LD   D, 0EH 
-                    0xcd,  0xcc,  0x01,  //   005e : 			CALL SDATA8 
-                    0xcd,  0x75,  0x01,  //   0061 : 		     	CALL DELAY 
-                           0x16,  0x06,  //   0064 : 		        LD   D, 06H 
-                    0xcd,  0xcc,  0x01,  //   0066 : 			CALL SDATA8 
-                    0xcd,  0x75,  0x01,  //   0069 : 		     	CALL DELAY 
-                           0x16,  0x01,  //   006c : 			LD   D, 01H 
-                    0xcd,  0xcc,  0x01,  //   006e : 			CALL SDATA8 
-                    0xcd,  0x75,  0x01,  //   0071 : 		     	CALL DELAY 
-                           0x16,  0x5a,  //   0074 : 			       ld  d, 'Z' 
-                    0xcd,  0xf1,  0x01,  //   0076 : 			     call DDATA8 
-                    0xcd,  0x75,  0x01,  //   0079 : 			          	CALL DELAY 
-                           0x16,  0x38,  //   007c : 			       ld  d, '8' 
-                    0xcd,  0xf1,  0x01,  //   007e : 			     call DDATA8 
-                    0xcd,  0x75,  0x01,  //   0081 : 			          	CALL DELAY 
-                           0x16,  0x30,  //   0084 : 			       ld  d, '0' 
-                    0xcd,  0xf1,  0x01,  //   0086 : 			     call DDATA8 
-                    0xcd,  0x75,  0x01,  //   0089 : 			          	CALL DELAY 
-                           0x16,  0x20,  //   008c : 			       ld  d, ' ' 
-                    0xcd,  0xf1,  0x01,  //   008e : 			     call DDATA8 
-                    0xcd,  0x75,  0x01,  //   0091 : 			          	CALL DELAY 
-                           0x16,  0x53,  //   0094 : 			       ld  d, 'S' 
-                    0xcd,  0xf1,  0x01,  //   0096 : 			     call DDATA8 
-                    0xcd,  0x75,  0x01,  //   0099 : 			          	CALL DELAY 
-                           0x16,  0x68,  //   009c : 			       ld  d, 'h' 
-                    0xcd,  0xf1,  0x01,  //   009e : 			     call DDATA8 
-                    0xcd,  0x75,  0x01,  //   00a1 : 			          	CALL DELAY 
-                           0x16,  0x69,  //   00a4 : 			       ld  d, 'i' 
-                    0xcd,  0xf1,  0x01,  //   00a6 : 			     call DDATA8 
-                    0xcd,  0x75,  0x01,  //   00a9 : 			          	CALL DELAY 
-                           0x16,  0x65,  //   00ac : 			       ld  d, 'e' 
-                    0xcd,  0xf1,  0x01,  //   00ae : 			     call DDATA8 
-                    0xcd,  0x75,  0x01,  //   00b1 : 			          	CALL DELAY 
-                           0x16,  0x6c,  //   00b4 : 			       ld  d, 'l' 
-                    0xcd,  0xf1,  0x01,  //   00b6 : 			     call DDATA8 
-                    0xcd,  0x75,  0x01,  //   00b9 : 			          	CALL DELAY 
-                           0x16,  0x64,  //   00bc : 			       ld  d, 'd' 
-                    0xcd,  0xf1,  0x01,  //   00be : 			     call DDATA8 
-                    0xcd,  0x75,  0x01,  //   00c1 : 			          	CALL DELAY 
-                           0x16,  0x02,  //   00c4 : 		AD:	       ld d, 2 
-                    0xcd,  0xcc,  0x01,  //   00c6 : 			       call     SDATA8 
-                    0xcd,  0xe9,  0x00,  //   00c9 : 				CALL	 ADSAMPLE 
-             0xed,  0x43,  0x00,  0xb0,  //   00cc : 			LD       (ADS0), BC 
-                           0x3e,  0x41,  //   00d0 : 			       LD A, 'A' 
-                                  0x81,  //   00d2 : 				       ADD    C 
-                                  0x57,  //   00d3 : 				       LD D, A 
-                    0xcd,  0xf1,  0x01,  //   00d4 : 			 call DDATA8 
-                           0x18,  0xeb,  //   00d7 : 			JR     AD 
-                           0x18,  0xfe,  //   00d9 : 		LOOP:	JR   LOOP 
-                                  0x7e,  //   00db : 			     DSTR: LD A,(HL) 
-                           0xfe,  0x00,  //   00dc : 			     CP    0 
-                           0x20,  0x01,  //   00de : 			     JR     NZ, CONT 
-                                  0xc9,  //   00e0 : 				     RET 
-                                  0x7e,  //   00e1 : 				     CONT:  LD A,(HL) 
-                                  0x57,  //   00e2 : 				     LD D, A 
-                    0xcd,  0xf1,  0x01,  //   00e3 : 			     CALL  DDATA8 
-                                  0x23,  //   00e6 : 				     INC HL 
-                           0x18,  0xf2,  //   00e7 : 			     JR DSTR 
-                    0xcd,  0x60,  0x02,  //   00e9 : 			CALL CLK_HIGH 
-                    0xcd,  0x30,  0x02,  //   00ec : 			CALL CS_LOW 
-                    0xcd,  0x50,  0x02,  //   00ef : 			CALL CLK_LOW 
-                    0xcd,  0x60,  0x02,  //   00f2 : 		        CALL CLK_HIGH 
-                    0xcd,  0x50,  0x02,  //   00f5 : 			CALL CLK_LOW 
-                    0xcd,  0x60,  0x02,  //   00f8 : 		        CALL CLK_HIGH 
-                    0xcd,  0x50,  0x02,  //   00fb : 			CALL CLK_LOW 
-                    0xcd,  0x60,  0x02,  //   00fe : 		        CALL CLK_HIGH 
-                    0xcd,  0x50,  0x02,  //   0101 : 			CALL CLK_LOW 
-                    0xcd,  0x60,  0x02,  //   0104 : 		        CALL CLK_HIGH 
-                    0xcd,  0x50,  0x02,  //   0107 : 			CALL CLK_LOW 
-                    0xcd,  0x60,  0x02,  //   010a : 		        CALL CLK_HIGH 
-                    0xcd,  0x50,  0x02,  //   010d : 			CALL CLK_LOW 
-                    0xcd,  0x60,  0x02,  //   0110 : 		        CALL CLK_HIGH 
-                    0xcd,  0x50,  0x02,  //   0113 : 			CALL CLK_LOW 
-                    0xcd,  0x60,  0x02,  //   0116 : 		        CALL CLK_HIGH 
-                    0xcd,  0x50,  0x02,  //   0119 : 		        CALL CLK_LOW 
-                    0xcd,  0x80,  0x02,  //   011c : 			CALL DIN_HIGH     	; START bit 
-                    0xcd,  0x60,  0x02,  //   011f : 		        CALL CLK_HIGH 
-                    0xcd,  0x50,  0x02,  //   0122 : 			CALL CLK_LOW 
-                    0xcd,  0x80,  0x02,  //   0125 : 			CALL DIN_HIGH           ;SGL 
-                    0xcd,  0x60,  0x02,  //   0128 : 			CALL CLK_HIGH 
-                    0xcd,  0x50,  0x02,  //   012b : 			CALL CLK_LOW 
-                    0xcd,  0x70,  0x02,  //   012e : 			CALL DIN_LOW 
-                    0xcd,  0x60,  0x02,  //   0131 : 			CALL CLK_HIGH 
-                    0xcd,  0x50,  0x02,  //   0134 : 			CALL CLK_LOW 
-                    0xcd,  0x70,  0x02,  //   0137 : 			CALL DIN_LOW 
-                    0xcd,  0x60,  0x02,  //   013a : 			CALL CLK_HIGH 
-                    0xcd,  0x50,  0x02,  //   013d : 			CALL CLK_LOW 
-                    0xcd,  0x70,  0x02,  //   0140 : 			CALL DIN_LOW 
-                    0xcd,  0x60,  0x02,  //   0143 : 			CALL CLK_HIGH 
-                    0xcd,  0x50,  0x02,  //   0146 : 			CALL CLK_LOW 
-                    0xcd,  0x70,  0x02,  //   0149 : 			CALL DIN_LOW 
-                    0xcd,  0x60,  0x02,  //   014c : 			CALL CLK_HIGH 
-                    0xcd,  0x50,  0x02,  //   014f : 			CALL CLK_LOW 
-                    0xcd,  0x70,  0x02,  //   0152 : 			CALL DIN_LOW 
-                    0xcd,  0x60,  0x02,  //   0155 : 			CALL CLK_HIGH 
-                           0x16,  0x0a,  //   0158 : 			LD	D, 10 
-                    0x01,  0x00,  0x00,  //   015a : 			LD      BC, 0    	;result 
-                    0xcd,  0x60,  0x02,  //   015d : 		        CALL  CLK_HIGH 
-                    0xcd,  0x90,  0x02,  //   0160 : 			CALL GET_DATABIT 
-                           0xcb,  0x21,  //   0163 : 			SLA     C 
-                           0xcb,  0x10,  //   0165 : 			RL      B 
-                           0xe6,  0x01,  //   0167 : 			AND     1 
-                                  0xb1,  //   0169 : 				OR      C 
-                                  0x4f,  //   016a : 				LD      C, A 
-                    0xcd,  0x50,  0x02,  //   016b : 			CALL   CLK_LOW 
-                                  0x15,  //   016e : 				DEC D 
-                           0x20,  0xec,  //   016f : 			JR   NZ, GETLOOP 
-                    0xcd,  0x40,  0x02,  //   0171 : 			CALL CS_HIGH 
-                                  0xc9,  //   0174 : 				RET 
-                           0x26,  0x02,  //   0175 : 			LD   H,02H    
-                           0x2e,  0xff,  //   0177 : 		LOOPH:    LD   L,0FFH    
-                                  0x2d,  //   0179 : 			LOOPL:    DEC   L    
-                           0x20,  0xfd,  //   017a : 		          JR   NZ,LOOPL    
-                                  0x25,  //   017c : 			          DEC   H    
-                           0x20,  0xf8,  //   017d : 		          JR   NZ,LOOPH    
-                                  0xc9,  //   017f : 			          RET       
-                           0x3e,  0xcf,  //   0180 : 			LD A, 0CFH 
-                           0xed,  0x79,  //   0182 : 			OUT (C), A 
-                                  0x7c,  //   0184 : 				LD A, H 
-                           0xed,  0x79,  //   0185 : 			OUT (C), A 
-                                  0x7d,  //   0187 : 				LD A, L 
-                                  0x4a,  //   0188 : 				LD C, D 
-                           0xed,  0x79,  //   0189 : 			OUT (C), A 
-                                  0xc9,  //   018b : 				RET 
-                                  0xc5,  //   018c : 			RS_LOW:PUSH   BC 
-                                  0xd5,  //   018d : 			      PUSH    DE 
-                           0x0e,  0x81,  //   018e : 			LD    C, IO_ADDR_PIO1_BD 
-                    0x21,  0x01,  0xa0,  //   0190 : 			LD    HL,SHADOW_B 
-                                  0x7e,  //   0193 : 				LD    A, (HL) 
-                           0xcb,  0x87,  //   0194 : 			RES   0, A 
-                                  0x77,  //   0196 : 				LD    (HL), A 
-                           0xed,  0x79,  //   0197 : 			OUT   (C), A 
-                                  0xd1,  //   0199 : 				POP   DE 
-                                  0xc1,  //   019a : 				POP   BC 
-                                  0xc9,  //   019b : 				RET 
-                                  0xc5,  //   019c : 			RS_HIGH:PUSH  BC 
-                                  0xd5,  //   019d : 			      PUSH    DE 
-                           0x0e,  0x81,  //   019e : 		        LD    C, IO_ADDR_PIO1_BD 
-                    0x21,  0x01,  0xa0,  //   01a0 : 			LD    HL,SHADOW_B 
-                                  0x7e,  //   01a3 : 				LD    A, (HL) 
-                           0xcb,  0xc7,  //   01a4 : 			SET   0, A 
-                                  0x77,  //   01a6 : 				LD    (HL), A 
-                           0xed,  0x79,  //   01a7 : 			OUT   (C), A 
-                                  0xd1,  //   01a9 : 				POP   DE	 
-                                  0xc1,  //   01aa : 				POP   BC 
-                                  0xc9,  //   01ab : 				RET 
-                                  0xc5,  //   01ac : 			E_LOW:  PUSH  BC 
-                                  0xd5,  //   01ad : 			        PUSH    DE 
-                           0x0e,  0x81,  //   01ae : 			LD    C, IO_ADDR_PIO1_BD 
-                    0x21,  0x01,  0xa0,  //   01b0 : 			LD    HL,SHADOW_B 
-                                  0x7e,  //   01b3 : 				LD    A, (HL) 
-                           0xcb,  0x8f,  //   01b4 : 			RES   1, A 
-                                  0x77,  //   01b6 : 				LD    (HL), A 
-                           0xed,  0x79,  //   01b7 : 			OUT   (C), A 
-                                  0xd1,  //   01b9 : 				POP   DE 
-                                  0xc1,  //   01ba : 				POP   BC 
-                                  0xc9,  //   01bb : 				RET 
-                                  0xc5,  //   01bc : 			E_HIGH: PUSH BC 
-                                  0xd5,  //   01bd : 			      PUSH    DE 
-                           0x0e,  0x81,  //   01be : 			LD    C, IO_ADDR_PIO1_BD 
-                    0x21,  0x01,  0xa0,  //   01c0 : 			LD    HL,SHADOW_B 
-                                  0x7e,  //   01c3 : 				LD    A, (HL) 
-                           0xcb,  0xcf,  //   01c4 : 			SET   1, A 
-                                  0x77,  //   01c6 : 				LD    (HL), A 
-                           0xed,  0x79,  //   01c7 : 			OUT   (C), A 
-                                  0xd1,  //   01c9 : 				POP   DE	 
-                                  0xc1,  //   01ca : 				POP   BC 
-                                  0xc9,  //   01cb : 				RET 
-                           0x0e,  0x80,  //   01cc : 			LD    C, IO_ADDR_PIO1_AD 
-                    0xcd,  0x8c,  0x01,  //   01ce : 			CALL  RS_LOW 
-                    0xcd,  0xbc,  0x01,  //   01d1 : 			CALL  E_HIGH 
-                                  0x7a,  //   01d4 : 				LD    A, D 
-                           0x0e,  0x80,  //   01d5 : 			LD    C, IO_ADDR_PIO1_AD	 
-                           0xed,  0x79,  //   01d7 : 			OUT   (C), A 
-                    0xcd,  0xac,  0x01,  //   01d9 : 			CALL  E_LOW 
-                    0xcd,  0xbc,  0x01,  //   01dc : 			CALL  E_HIGH 
-                                  0x7a,  //   01df : 				LD    A, D 
-                           0xcb,  0x27,  //   01e0 : 			SLA   A 
-                           0xcb,  0x27,  //   01e2 : 			SLA   A 
-                           0xcb,  0x27,  //   01e4 : 			SLA   A 
-                           0xcb,  0x27,  //   01e6 : 			SLA   A 
-                           0xed,  0x79,  //   01e8 : 			OUT   (C), A 
-                    0xcd,  0xac,  0x01,  //   01ea : 			CALL  E_LOW 
-                    0xcd,  0x9c,  0x01,  //   01ed : 			CALL  RS_HIGH 
-                                  0xc9,  //   01f0 : 				RET 
-                           0x0e,  0x80,  //   01f1 : 			LD    C, IO_ADDR_PIO1_AD 
-                    0xcd,  0x9c,  0x01,  //   01f3 : 			CALL  RS_HIGH 
-                    0xcd,  0xbc,  0x01,  //   01f6 : 			CALL  E_HIGH 
-                                  0x7a,  //   01f9 : 				LD    A, D 
-                           0x0e,  0x80,  //   01fa : 			LD    C, IO_ADDR_PIO1_AD	 
-                           0xed,  0x79,  //   01fc : 			OUT   (C), A 
-                    0xcd,  0xac,  0x01,  //   01fe : 			CALL  E_LOW 
-                    0xcd,  0xbc,  0x01,  //   0201 : 			CALL  E_HIGH 
-                                  0x7a,  //   0204 : 				LD    A, D 
-                           0xcb,  0x27,  //   0205 : 			SLA   A 
-                           0xcb,  0x27,  //   0207 : 			SLA   A 
-                           0xcb,  0x27,  //   0209 : 			SLA   A 
-                           0xcb,  0x27,  //   020b : 			SLA   A 
-                           0xed,  0x79,  //   020d : 			OUT   (C), A 
-                    0xcd,  0xac,  0x01,  //   020f : 			CALL  E_LOW 
-                    0xcd,  0x9c,  0x01,  //   0212 : 			CALL  RS_HIGH 
-                                  0xc9,  //   0215 : 				RET 
-                    0xcd,  0x8c,  0x01,  //   0216 : 		SDATA4: CALL  RS_LOW 
-                    0xcd,  0xbc,  0x01,  //   0219 : 			CALL  E_HIGH 
-                                  0x7a,  //   021c : 				LD    A, D 
-                           0xcb,  0x27,  //   021d : 			SLA   A 
-                           0xcb,  0x27,  //   021f : 			SLA   A 
-                           0xcb,  0x27,  //   0221 : 			SLA   A 
-                           0xcb,  0x27,  //   0223 : 			SLA   A 
-                           0x0e,  0x80,  //   0225 : 			LD    C, IO_ADDR_PIO1_AD 
-                           0xed,  0x79,  //   0227 : 			OUT   (C), A 
-                    0xcd,  0xac,  0x01,  //   0229 : 			CALL  E_LOW 
-                    0xcd,  0x9c,  0x01,  //   022c : 			CALL  RS_HIGH 
-                                  0xc9,  //   022f : 				RET 
-                                  0xc5,  //   0230 : 			CS_LOW: PUSH    BC 
-                                  0xd5,  //   0231 : 			        PUSH    DE 
-                           0x0e,  0x00,  //   0232 : 			LD    C, IO_ADDR_PIO0_AD 
-                    0x21,  0x02,  0xa0,  //   0234 : 			LD    HL,SHADOW_AD 
-                                  0x7e,  //   0237 : 				LD    A, (HL) 
-                           0xcb,  0x87,  //   0238 : 			RES   0, A 
-                                  0x77,  //   023a : 				LD    (HL), A 
-                           0xed,  0x79,  //   023b : 			OUT   (C), A 
-                                  0xd1,  //   023d : 				POP   DE 
-                                  0xc1,  //   023e : 				POP   BC 
-                                  0xc9,  //   023f : 				RET 
-                                  0xc5,  //   0240 : 			CS_HIGH: PUSH    BC 
-                                  0xd5,  //   0241 : 			        PUSH    DE 
-                           0x0e,  0x00,  //   0242 : 			LD    C, IO_ADDR_PIO0_AD 
-                    0x21,  0x02,  0xa0,  //   0244 : 			LD    HL,SHADOW_AD 
-                                  0x7e,  //   0247 : 				LD    A, (HL) 
-                           0xcb,  0xc7,  //   0248 : 			SET   0, A 
-                                  0x77,  //   024a : 				LD    (HL), A 
-                           0xed,  0x79,  //   024b : 			OUT   (C), A 
-                                  0xd1,  //   024d : 				POP   DE 
-                                  0xc1,  //   024e : 				POP   BC 
-                                  0xc9,  //   024f : 				RET 
-                                  0xc5,  //   0250 : 			CLK_LOW: PUSH    BC 
-                                  0xd5,  //   0251 : 			        PUSH    DE 
-                           0x0e,  0x00,  //   0252 : 			LD    C, IO_ADDR_PIO0_AD 
-                    0x21,  0x02,  0xa0,  //   0254 : 			LD    HL,SHADOW_AD 
-                                  0x7e,  //   0257 : 				LD    A, (HL) 
-                           0xcb,  0x8f,  //   0258 : 			RES   1, A 
-                                  0x77,  //   025a : 				LD    (HL), A 
-                           0xed,  0x79,  //   025b : 			OUT   (C), A 
-                                  0xd1,  //   025d : 				POP   DE 
-                                  0xc1,  //   025e : 				POP   BC 
-                                  0xc9,  //   025f : 				RET 
-                                  0xc5,  //   0260 : 			CLK_HIGH: PUSH    BC 
-                                  0xd5,  //   0261 : 			        PUSH    DE 
-                           0x0e,  0x00,  //   0262 : 			LD    C, IO_ADDR_PIO0_AD 
-                    0x21,  0x02,  0xa0,  //   0264 : 			LD    HL,SHADOW_AD 
-                                  0x7e,  //   0267 : 				LD    A, (HL) 
-                           0xcb,  0xcf,  //   0268 : 			SET   1, A 
-                                  0x77,  //   026a : 				LD    (HL), A 
-                           0xed,  0x79,  //   026b : 			OUT   (C), A 
-                                  0xd1,  //   026d : 				POP   DE 
-                                  0xc1,  //   026e : 				POP   BC 
-                                  0xc9,  //   026f : 				RET 
-                                  0xc5,  //   0270 : 			DIN_LOW: PUSH    BC 
-                                  0xd5,  //   0271 : 			        PUSH    DE 
-                           0x0e,  0x00,  //   0272 : 			LD    C, IO_ADDR_PIO0_AD 
-                    0x21,  0x02,  0xa0,  //   0274 : 			LD    HL,SHADOW_AD 
-                                  0x7e,  //   0277 : 				LD    A, (HL) 
-                           0xcb,  0x97,  //   0278 : 			RES   2, A 
-                                  0x77,  //   027a : 				LD    (HL), A 
-                           0xed,  0x79,  //   027b : 			OUT   (C), A 
-                                  0xd1,  //   027d : 				POP   DE 
-                                  0xc1,  //   027e : 				POP   BC 
-                                  0xc9,  //   027f : 				RET 
-                                  0xc5,  //   0280 : 			DIN_HIGH: PUSH    BC 
-                                  0xd5,  //   0281 : 			        PUSH    DE 
-                           0x0e,  0x00,  //   0282 : 			LD    C, IO_ADDR_PIO0_AD 
-                    0x21,  0x02,  0xa0,  //   0284 : 			LD    HL,SHADOW_AD 
-                                  0x7e,  //   0287 : 				LD    A, (HL) 
-                           0xcb,  0xd7,  //   0288 : 			SET   2, A 
-                                  0x77,  //   028a : 				LD    (HL), A 
-                           0xed,  0x79,  //   028b : 			OUT   (C), A 
-                                  0xd1,  //   028d : 				POP   DE 
-                                  0xc1,  //   028e : 				POP   BC 
-                                  0xc9,  //   028f : 				RET 
-                                  0xc5,  //   0290 : 			GET_DATABIT: PUSH    BC 
-                                  0xd5,  //   0291 : 			        PUSH    DE 
-                           0x0e,  0x00,  //   0292 : 			LD    C, IO_ADDR_PIO0_AD 
-                           0xed,  0x78,  //   0294 : 			IN     A, (C) 
-                           0xe6,  0x08,  //   0296 : 			AND    08H 
-                           0xcb,  0x3f,  //   0298 : 			SRL    A 
-                           0xcb,  0x3f,  //   029a : 			SRL    A 
-                           0xcb,  0x3f,  //   029c : 			SRL    A	 
-                                  0xd1,  //   029e : 				POP   DE 
-                                  0xc1,  //   029f : 				POP   BC 
-                                  0xc9,  //   02a0 : 				RET 
+    0x31,
+    0x00,
+    0x90,
+    0x0E,
+    0x82,
+    0x16,
+    0x80,
+    0x26,
+    0x0F,
+    0x2E,
+    0x00,
+    0xCD,
+    0x80,
+    0x01,
+    0x0E,
+    0x83,
+    0x16,
+    0x81,
+    0x26,
+    0xFC,
+    0x2E,
+    0x00,
+    0xCD,
+    0x80,
+    0x01,
+    0x0E,
+    0x02,
+    0x16,
+    0x00,
+    0x26,
+    0xF8,
+    0x2E,
+    0x01,
+    0xCD,
+    0x80,
+    0x01,
+    0x3E,
+    0x01,
+    0x32,
+    0x02,
+    0xA0,
+    0x3E,
+    0x00,
+    0x32,
+    0x00,
+    0xA0,
+    0x3E,
+    0x00,
+    0x32,
+    0x01,
+    0xA0,
+    0xCD,
+    0x8C,
+    0x01,
+    0xCD,
+    0xAC,
+    0x01,
+    0xCD,
+    0x75,
+    0x01,
+    0x16,
+    0x03,
+    0xCD,
+    0x16,
+    0x02,
+    0xCD,
+    0x75,
+    0x01,
+    0x16,
+    0x03,
+    0xCD,
+    0x16,
+    0x02,
+    0xCD,
+    0x75,
+    0x01,
+    0x16,
+    0x03,
+    0xCD,
+    0x16,
+    0x02,
+    0xCD,
+    0x75,
+    0x01,
+    0x16,
+    0x02,
+    0xCD,
+    0x16,
+    0x02,
+    0xCD,
+    0x75,
+    0x01,
+    0x16,
+    0x0E,
+    0xCD,
+    0xCC,
+    0x01,
+    0xCD,
+    0x75,
+    0x01,
+    0x16,
+    0x06,
+    0xCD,
+    0xCC,
+    0x01,
+    0xCD,
+    0x75,
+    0x01,
+    0x16,
+    0x01,
+    0xCD,
+    0xCC,
+    0x01,
+    0xCD,
+    0x75,
+    0x01,
+    0x16,
+    0x5A,
+    0xCD,
+    0xF1,
+    0x01,
+    0xCD,
+    0x75,
+    0x01,
+    0x16,
+    0x38,
+    0xCD,
+    0xF1,
+    0x01,
+    0xCD,
+    0x75,
+    0x01,
+    0x16,
+    0x30,
+    0xCD,
+    0xF1,
+    0x01,
+    0xCD,
+    0x75,
+    0x01,
+    0x16,
+    0x20,
+    0xCD,
+    0xF1,
+    0x01,
+    0xCD,
+    0x75,
+    0x01,
+    0x16,
+    0x53,
+    0xCD,
+    0xF1,
+    0x01,
+    0xCD,
+    0x75,
+    0x01,
+    0x16,
+    0x68,
+    0xCD,
+    0xF1,
+    0x01,
+    0xCD,
+    0x75,
+    0x01,
+    0x16,
+    0x69,
+    0xCD,
+    0xF1,
+    0x01,
+    0xCD,
+    0x75,
+    0x01,
+    0x16,
+    0x65,
+    0xCD,
+    0xF1,
+    0x01,
+    0xCD,
+    0x75,
+    0x01,
+    0x16,
+    0x6C,
+    0xCD,
+    0xF1,
+    0x01,
+    0xCD,
+    0x75,
+    0x01,
+    0x16,
+    0x64,
+    0xCD,
+    0xF1,
+    0x01,
+    0xCD,
+    0x75,
+    0x01,
+    0x16,
+    0x02,
+    0xCD,
+    0xCC,
+    0x01,
+    0xCD,
+    0xE9,
+    0x00,
+    0xED,
+    0x43,
+    0x00,
+    0xB0,
+    0x3E,
+    0x41,
+    0x81,
+    0x57,
+    0xCD,
+    0xF1,
+    0x01,
+    0x18,
+    0xEB,
+    0x18,
+    0xFE,
+    0x7E,
+    0xFE,
+    0x00,
+    0x20,
+    0x01,
+    0xC9,
+    0x7E,
+    0x57,
+    0xCD,
+    0xF1,
+    0x01,
+    0x23,
+    0x18,
+    0xF2,
+    0xCD,
+    0x60,
+    0x02,
+    0xCD,
+    0x30,
+    0x02,
+    0xCD,
+    0x50,
+    0x02,
+    0xCD,
+    0x60,
+    0x02,
+    0xCD,
+    0x50,
+    0x02,
+    0xCD,
+    0x60,
+    0x02,
+    0xCD,
+    0x50,
+    0x02,
+    0xCD,
+    0x60,
+    0x02,
+    0xCD,
+    0x50,
+    0x02,
+    0xCD,
+    0x60,
+    0x02,
+    0xCD,
+    0x50,
+    0x02,
+    0xCD,
+    0x60,
+    0x02,
+    0xCD,
+    0x50,
+    0x02,
+    0xCD,
+    0x60,
+    0x02,
+    0xCD,
+    0x50,
+    0x02,
+    0xCD,
+    0x60,
+    0x02,
+    0xCD,
+    0x50,
+    0x02,
+    0xCD,
+    0x80,
+    0x02,
+    0xCD,
+    0x60,
+    0x02,
+    0xCD,
+    0x50,
+    0x02,
+    0xCD,
+    0x80,
+    0x02,
+    0xCD,
+    0x60,
+    0x02,
+    0xCD,
+    0x50,
+    0x02,
+    0xCD,
+    0x70,
+    0x02,
+    0xCD,
+    0x60,
+    0x02,
+    0xCD,
+    0x50,
+    0x02,
+    0xCD,
+    0x70,
+    0x02,
+    0xCD,
+    0x60,
+    0x02,
+    0xCD,
+    0x50,
+    0x02,
+    0xCD,
+    0x70,
+    0x02,
+    0xCD,
+    0x60,
+    0x02,
+    0xCD,
+    0x50,
+    0x02,
+    0xCD,
+    0x70,
+    0x02,
+    0xCD,
+    0x60,
+    0x02,
+    0xCD,
+    0x50,
+    0x02,
+    0xCD,
+    0x70,
+    0x02,
+    0xCD,
+    0x60,
+    0x02,
+    0x16,
+    0x0A,
+    0x01,
+    0x00,
+    0x00,
+    0xCD,
+    0x60,
+    0x02,
+    0xCD,
+    0x90,
+    0x02,
+    0xCB,
+    0x21,
+    0xCB,
+    0x10,
+    0xE6,
+    0x01,
+    0xB1,
+    0x4F,
+    0xCD,
+    0x50,
+    0x02,
+    0x15,
+    0x20,
+    0xEC,
+    0xCD,
+    0x40,
+    0x02,
+    0xC9,
+    0x26,
+    0x02,
+    0x2E,
+    0xFF,
+    0x2D,
+    0x20,
+    0xFD,
+    0x25,
+    0x20,
+    0xF8,
+    0xC9,
+    0x3E,
+    0xCF,
+    0xED,
+    0x79,
+    0x7C,
+    0xED,
+    0x79,
+    0x7D,
+    0x4A,
+    0xED,
+    0x79,
+    0xC9,
+    0xC5,
+    0xD5,
+    0x0E,
+    0x81,
+    0x21,
+    0x01,
+    0xA0,
+    0x7E,
+    0xCB,
+    0x87,
+    0x77,
+    0xED,
+    0x79,
+    0xD1,
+    0xC1,
+    0xC9,
+    0xC5,
+    0xD5,
+    0x0E,
+    0x81,
+    0x21,
+    0x01,
+    0xA0,
+    0x7E,
+    0xCB,
+    0xC7,
+    0x77,
+    0xED,
+    0x79,
+    0xD1,
+    0xC1,
+    0xC9,
+    0xC5,
+    0xD5,
+    0x0E,
+    0x81,
+    0x21,
+    0x01,
+    0xA0,
+    0x7E,
+    0xCB,
+    0x8F,
+    0x77,
+    0xED,
+    0x79,
+    0xD1,
+    0xC1,
+    0xC9,
+    0xC5,
+    0xD5,
+    0x0E,
+    0x81,
+    0x21,
+    0x01,
+    0xA0,
+    0x7E,
+    0xCB,
+    0xCF,
+    0x77,
+    0xED,
+    0x79,
+    0xD1,
+    0xC1,
+    0xC9,
+    0x0E,
+    0x80,
+    0xCD,
+    0x8C,
+    0x01,
+    0xCD,
+    0xBC,
+    0x01,
+    0x7A,
+    0x0E,
+    0x80,
+    0xED,
+    0x79,
+    0xCD,
+    0xAC,
+    0x01,
+    0xCD,
+    0xBC,
+    0x01,
+    0x7A,
+    0xCB,
+    0x27,
+    0xCB,
+    0x27,
+    0xCB,
+    0x27,
+    0xCB,
+    0x27,
+    0xED,
+    0x79,
+    0xCD,
+    0xAC,
+    0x01,
+    0xCD,
+    0x9C,
+    0x01,
+    0xC9,
+    0x0E,
+    0x80,
+    0xCD,
+    0x9C,
+    0x01,
+    0xCD,
+    0xBC,
+    0x01,
+    0x7A,
+    0x0E,
+    0x80,
+    0xED,
+    0x79,
+    0xCD,
+    0xAC,
+    0x01,
+    0xCD,
+    0xBC,
+    0x01,
+    0x7A,
+    0xCB,
+    0x27,
+    0xCB,
+    0x27,
+    0xCB,
+    0x27,
+    0xCB,
+    0x27,
+    0xED,
+    0x79,
+    0xCD,
+    0xAC,
+    0x01,
+    0xCD,
+    0x9C,
+    0x01,
+    0xC9,
+    0xCD,
+    0x8C,
+    0x01,
+    0xCD,
+    0xBC,
+    0x01,
+    0x7A,
+    0xCB,
+    0x27,
+    0xCB,
+    0x27,
+    0xCB,
+    0x27,
+    0xCB,
+    0x27,
+    0x0E,
+    0x80,
+    0xED,
+    0x79,
+    0xCD,
+    0xAC,
+    0x01,
+    0xCD,
+    0x9C,
+    0x01,
+    0xC9,
+    0xC5,
+    0xD5,
+    0x0E,
+    0x00,
+    0x21,
+    0x02,
+    0xA0,
+    0x7E,
+    0xCB,
+    0x87,
+    0x77,
+    0xED,
+    0x79,
+    0xD1,
+    0xC1,
+    0xC9,
+    0xC5,
+    0xD5,
+    0x0E,
+    0x00,
+    0x21,
+    0x02,
+    0xA0,
+    0x7E,
+    0xCB,
+    0xC7,
+    0x77,
+    0xED,
+    0x79,
+    0xD1,
+    0xC1,
+    0xC9,
+    0xC5,
+    0xD5,
+    0x0E,
+    0x00,
+    0x21,
+    0x02,
+    0xA0,
+    0x7E,
+    0xCB,
+    0x8F,
+    0x77,
+    0xED,
+    0x79,
+    0xD1,
+    0xC1,
+    0xC9,
+    0xC5,
+    0xD5,
+    0x0E,
+    0x00,
+    0x21,
+    0x02,
+    0xA0,
+    0x7E,
+    0xCB,
+    0xCF,
+    0x77,
+    0xED,
+    0x79,
+    0xD1,
+    0xC1,
+    0xC9,
+    0xC5,
+    0xD5,
+    0x0E,
+    0x00,
+    0x21,
+    0x02,
+    0xA0,
+    0x7E,
+    0xCB,
+    0x97,
+    0x77,
+    0xED,
+    0x79,
+    0xD1,
+    0xC1,
+    0xC9,
+    0xC5,
+    0xD5,
+    0x0E,
+    0x00,
+    0x21,
+    0x02,
+    0xA0,
+    0x7E,
+    0xCB,
+    0xD7,
+    0x77,
+    0xED,
+    0x79,
+    0xD1,
+    0xC1,
+    0xC9,
+    0xC5,
+    0xD5,
+    0x0E,
+    0x00,
+    0xED,
+    0x78,
+    0xE6,
+    0x08,
+    0xCB,
+    0x3F,
+    0xCB,
+    0x3F,
+    0xCB,
+    0x3F,
+    0xD1,
+    0xC1,
+    0xC9,
   };
 
-BYTE example_code_df_test[] =
+
+
+
+
+
+
+//--------------------------------------------------------------------------------
+// Code that runs between instructions to dump registers
+
+const BYTE inter_inst_code_regdump[] =
   {
-  0xf3,
+    0xF5,
+    0xE5,
+    0xC5,
+    0xD5,
+    0xDD,
+    0xE5,
+    0xFD,
+    0xE5,
+    0xFD,
+    0xE1,
+    0xDD,
+    0xE1,
+    0xD1,
+    0xC1,
+    0xE1,
+    0xF1,
+    0x08,
+    0xD9,
+    0xF5,
+    0xE5,
+    0xC5,
+    0xD5,
+    0xD1,
+    0xC1,
+    0xE1,
+    0xF1,
+    0xD9,
+    0x08,
+    0x18,
+    0xE2,
   };
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 //--------------------------------------------------------------------------------
 
@@ -1891,7 +3044,7 @@ struct
   BYTE  *code;
   int length;
 }
-  code_list[] =
+  const code_list[] =
     {
       {"Copy code to RAM and execute it", example_code_ram,          sizeof(example_code_ram)},
       {"Write value to bank register",    example_code_bank,         sizeof(example_code_bank)},
@@ -1900,7 +3053,7 @@ struct
       {"Flash turn LCD shield backlight", example_code_lcd_bl_flash, sizeof(example_code_lcd_bl_flash)},
       {"Slow Flash turn LCD shield backlight", example_code_lcd_slow_flash, sizeof(example_code_lcd_slow_flash)},
       {"LCD test",                             example_code_lcd_test, sizeof(example_code_lcd_test)},
-      {"DF playing around test",          example_code_df_test,      sizeof(example_code_df_test)},
+      //{"DF playing around test",          example_code_df_test,      sizeof(example_code_df_test)},
       {"-",                               0,                         0},
     };
 
@@ -1908,10 +3061,10 @@ struct
 void cmd_set_example_code(String cmd)
 {
   if( cmd.length() == 1 )
-  {
-    Serial.println("Set example code using 'sN' where 'N' is from the example code list");
-    return;
-  }
+    {
+      Serial.println(F("Set example code using 'sN' where 'N' is from the example code list"));
+      return;
+    }
 
   String arg = cmd.substring(1);
 
@@ -1919,18 +3072,18 @@ void cmd_set_example_code(String cmd)
   example_code        = code_list[code_i].code;
   example_code_length = code_list[code_i].length;
   
-  Serial.print("\nExample code now '");
+  Serial.print(F("\nExample code now '"));
   Serial.print(code_list[code_i].desc);
-  Serial.print("  len:");
+  Serial.print(F("  len:"));
   Serial.print(example_code_length);
   Serial.println("'");
 
   Serial.print("\nCode example "+arg+" has been set in the Mega memory. ");
 #if ENABLE_MEGA_ROM_EMULATION
-  Serial.println("Mega is emulating ROM in this sketch build, and will supply this code to the Z80.");
+  Serial.println(F("Mega is emulating ROM in this sketch build, and will supply this code to the Z80."));
 #else
-  Serial.println("This sketch build is not emulating ROM, so remember to write");
-  Serial.println("it to flash so the hardware runs it.");
+  Serial.println(F("This sketch build is not emulating ROM, so remember to write"));
+  Serial.println(F("it to flash so the hardware runs it."));
 #endif
 }
 
@@ -1938,8 +3091,8 @@ void cmd_show_example_code(String cmd)
 {
   (void)cmd;
 
-  Serial.println("\nCode examples in this build:");
-  Serial.println("----------------------------");
+  Serial.println(F("\nCode examples in this build:"));
+  Serial.println(F("----------------------------"));
   
   for(int i=0; code_list[i].code != 0; i++)
     {
@@ -1948,7 +3101,7 @@ void cmd_show_example_code(String cmd)
       Serial.println(code_list[i].desc);
     }
 
-  Serial.println("\nUse 's' option of command menu to set one of these code examples");
+  Serial.println(F("\nUse 's' option of command menu to set one of these code examples"));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1978,7 +3131,9 @@ void cmd_trace_test_code(String cmd)
 {
   (void)cmd;
   boolean running = true;
+  unsigned long start, end;
 
+  
 #ifdef __UNUSED_CODE__
   int cycle_type = CYCLE_NONE;
   int cycle_dir = CYCLE_DIR_NONE;
@@ -1986,10 +3141,16 @@ void cmd_trace_test_code(String cmd)
 #endif
   
   int fast_mode_n = 0;
-  int fast_to_next_instruction = -1;
-  int fast_to_address = -1;
+
+
   unsigned int trigger_address = 0x8000;    // trigger when we hit RAm by default
   boolean trigger_on = false;
+
+
+#if ENABLE_TIMINGS
+  unsigned long average = 0;
+  unsigned long t_now = 0, t_last = 0;
+#endif
   
   // We have a logical address space for the array of code such that the code starts at
   // 0000H, which is the reset vector
@@ -2013,15 +3174,16 @@ void cmd_trace_test_code(String cmd)
     {
       // Half t states so we can examine all clock transitions
       half_t_state();
+
       //delay(5);
 
       if( signal_state("M1") == LOW )
-        z80_registers.PC = (uint16_t)addr_state();  
+        z80_registers.pc = (uint16_t)addr_state();  
 
       // Dump the status so we can see what's happening
       if ( !fast_mode )
 	{
-	  Serial.print("\nBus state:");
+	  Serial.print(F("\nBus state:"));
 	  Serial.println(bsm_state_name());
 
 	  cmd_dump_signals();
@@ -2029,7 +3191,7 @@ void cmd_trace_test_code(String cmd)
 	}
       else
 	{
-	  if( (fast_mode_n % 100)==0 )
+	  if( (fast_mode_n % 1000000)==0 )
 	    {
 	      Serial.println(fast_mode_n);
 	    }
@@ -2053,6 +3215,7 @@ void cmd_trace_test_code(String cmd)
       int maprqm = signal_state("MAPRQM");
       int last_addr = -1;
 #endif
+      int trace_size;
       
       if ( (rd == HIGH) )
 	{
@@ -2113,9 +3276,11 @@ void cmd_trace_test_code(String cmd)
 
 	  if ( fast_mode_n == -1 )
             {
+	      
               // Casts are to keep the compiler quiet. For the moment the fast_to_address
               // is signed so it can use -1 as a sentinel value
               //
+#if 0
               if( fast_to_address != -1 )
                 {
                   if( (int16_t)z80_registers.PC == fast_to_address )
@@ -2125,14 +3290,10 @@ void cmd_trace_test_code(String cmd)
                       fast_to_address = -1;
                     }
                 }
-              else if( (int16_t)z80_registers.PC != fast_to_next_instruction )
-                {
-                  fast_mode = false;
-                  quiet = false;
-                }
+#endif
 	    }
 
-	  if ( Serial.available()>0 )
+	  if ( (!uninterruptible_command) && (Serial.available() > 0) )
 	    {
 	      // Turn fast mode off if there's a keypress
 	      fast_mode = false;
@@ -2144,39 +3305,54 @@ void cmd_trace_test_code(String cmd)
 	    {
 	      fast_mode = false;
 	      quiet = false;
-	      Serial.print("Trigger address reached (");
+	      Serial.print(F("Trigger address reached ("));
 	      Serial.print(trigger_address & 0xffff, HEX);
 	      Serial.println(")");
 	    }
 	}
       else
 	{
+#if ENABLE_TIMINGS
+	  t_now = millis();
+#endif
 	  // Allow interaction
 	  if ( trigger_on )
 	    {
-	      Serial.print("\nBreakpoint active:");
+	      Serial.print(F("\nBreakpoint active:"));
 	      Serial.println(trigger_address & 0xffff, HEX);
 	    }
 	  
-	  Serial.println( "\nTrace Menu" );
-          Serial.println( "==========" );
+	  Serial.println( F("\nTrace Menu") );
+          Serial.println( F("==========") );
 
-	  Serial.println("t:Mega drive n tstates       f:Mega drive tstates forever");
-	  Serial.println("c:Mega drive tstates, continues to given Z80 instruction address");
-	  Serial.println("n:Mega drive tstates until next Z80 instruction\n");
-	  Serial.println("F:Free run (at ~4.5MHz)      M:Mega provide clock (at ~80Hz)");
-	  Serial.println("G:Mega take Z80 bus (BUSREQ) R:Mega release Z80 bus");
-	  Serial.println("I:Mega take IO map           i:Hardware take IO map");
-	  Serial.println("J:Mega take memory map       j:Hardware take memory map\n");
-	  Serial.println("r:reset Z80");
-	  Serial.println("1:assert reset               0:deassert reset             d:dump regs (coming soon!)");
-	  Serial.println("b:Breakpoint                 B:Toggle breakpoint\n");
-	  Serial.println("return: drive half a clock   q:quit menu");
+	  Serial.println(F("t:Mega drive n tstates       f:Mega drive tstates forever"));
+	  Serial.println(F("c:Mega drive tstates, continues to given Z80 instruction address"));
+	  Serial.println(F("n:Mega drive tstates until next Z80 instruction\n"));
+	  Serial.println(F("F:Free run (at ~4.5MHz)      M:Mega provide clock (at ~80Hz)"));
+	  Serial.println(F("G:Mega take Z80 bus (BUSREQ) R:Mega release Z80 bus"));
+	  Serial.println(F("I:Mega take IO map           i:Hardware take IO map"));
+	  Serial.println(F("J:Mega take memory map       j:Hardware take memory map\n"));
+	  Serial.println(F("r:reset Z80"));
+	  Serial.println(F("1:assert reset               0:deassert reset\n"));
+	  Serial.println(F("b:Breakpoint                 B:Toggle breakpoint\n"));
+	  Serial.println(F("-:Display trace              =:Display II Trace\n"));
+	  Serial.println(F("X:Assert INT x:desaart INT   Y:Assert NMI  y:Deassert NMI\n"));
+
+	  Serial.println(F("return: drive half a clock   q:quit menu"));
+
+#if ENABLE_TIMINGS
+	  Serial.print(F("Elapsed:"));
+	  Serial.print(t_now-t_last);
+	  t_last = t_now;
+	  Serial.println(F("ms"));
+#endif
 	  
 	  boolean cmdloop = true;
 	  
           String trace_cmd = "";
-          Serial.print("trace> "); Serial.flush();
+          Serial.print(F("trace> "));
+	  Serial.flush();
+	  
 	  while( cmdloop )
 	    {
               while ( Serial.available() == 0 );
@@ -2184,139 +3360,246 @@ void cmd_trace_test_code(String cmd)
               char c = Serial.read();
               trace_cmd += c;
 
+#if ENABLE_LOCAL_ECHO
               // Echo back key
               //
               Serial.print( c ); Serial.flush();
-
+#endif
+	      
 	      if( c == '\n' || c == '\r' )
-              {
-                //Serial.print("Action ");
-                //Serial.println(trace_cmd);
+		{
+		  //Serial.print("Action ");
+		  //Serial.println(trace_cmd);
 
-                switch( trace_cmd.charAt(0) )
-                {
-                case 't':
-                  fast_mode = true;
-                  quiet = true;
-                  delay(100);
-                  if( trace_cmd.length() > 2 )
-                    fast_mode_n = strtol((trace_cmd.c_str())+1, NULL, 10);
-                  else
-                    fast_mode_n = -1;
-                  cmdloop = false;
-                  break;
-
-                case 'n':
-                  fast_mode = true;
-                  quiet = true;
-                  delay(100);
-                  fast_mode_n = -1;
-                  fast_to_next_instruction = z80_registers.PC;
-                  cmdloop = false;
-                  break;
-
-                case 'c':
-                  fast_mode = true;
-                  quiet = true;
-                  delay(100);
-                  fast_mode_n = -1;
-                  fast_to_address = strtol((trace_cmd.c_str())+1, NULL, 16);
-                  cmdloop = false;
-                  break;
-
-                case 'f':
-                  fast_mode = true;
-                  fast_mode_n = -1;
-                  quiet = true;
-                  break;
-
-                case 'b':
-                  delay(100);
-                  trigger_address = strtol((trace_cmd.c_str())+1, NULL, 16);
-                  trigger_on = true;
-                  cmdloop=false;
-                  break;
-
-                case 'B':
-                  trigger_on = !trigger_on;
-                  break;
-		      
-                case 'M':
-                  // Select Mega control of reset and clock
-                  digitalWrite(SW0_Pin, HIGH);
-                  digitalWrite(SW1_Pin, LOW);
-                  break;
-		      
-                case 'F':
-                  // Free run
-
-                  assert_signal(SIG_RES);
-
-                  // Mega relinquishes control of reset and clock, letting hw have it
-                  //
-                  digitalWrite(SW0_Pin, LOW);
-                  digitalWrite(SW1_Pin, LOW);
-
-                  // Mega relinquishes IO and memory map
-                  //
-                  digitalWrite(MAPRQI_Pin, LOW);
-                  digitalWrite(MAPRQM_Pin, LOW);
-
-                  // Reset the Z80
-                  //
-                  reset_z80();
-
-                  break;
-                  
-                case 'I':
-                  digitalWrite(MAPRQI_Pin, HIGH);
-                  break;
-
-                case 'i':
-                  digitalWrite(MAPRQI_Pin, LOW);
-                  break;
-
-                case 'J':
-                  digitalWrite(MAPRQM_Pin, HIGH);
-                  break;
-
-                case 'j':
-                  digitalWrite(MAPRQM_Pin, LOW);
-                  break;
-		      
-                case 'G':
-                  bus_request();
-                  break;
-		      
-                case 'R':
-                  bus_release();
-                  break;
-		      
-                case 'r':
-                  cmd_reset_z80("");
-                  break;
-
-                case '1':
-                  assert_signal(SIG_RES);
-                  break;
+#if ENABLE_TIMINGS
+		  t_last = millis();
+#endif
+		  switch( trace_cmd.charAt(0) )
+		    {
+#if ENABLE_TIMINGS
+		    case 'z':
+		      // Display stored timing information
+		      Serial.println(F("Mega CLK timing"));
+		      average = 0;
 		  
-                case '0':
-                  deassert_signal(SIG_RES);
-                  break;
-		      
-                case 'q':
-                  running = false;
-                  cmdloop = false;
-                  break;
-		      
-                case '\r':
-                  cmdloop = false;
-                  break;
-                }
+		      for(int i=0; i<NUM_TIMED_CLKS;i++)
+			{
+			  Serial.print(" ");
+			  Serial.print(last_clks[i]);
+			  average += last_clks[i];
+			}
+		      Serial.println("");
+		      Serial.print(F("Average:"));
+		      Serial.println(average / NUM_TIMED_CLKS);
+		  
+		      break;
+#endif		  
+		    case 't':
+		      fast_mode = true;
+		      quiet = true;
+		      delay(100);
+		      if( trace_cmd.length() > 2 )
+			fast_mode_n = strtol((trace_cmd.c_str())+1, NULL, 10);
+		      else
+			fast_mode_n = -1;
+		      cmdloop = false;
+		      break;
 
-                Serial.print("trace> "); Serial.flush();
-                trace_cmd = "";
-              }
+		    case 'n':
+		      fast_mode = true;
+		      quiet = true;
+		      delay(100);
+		      fast_mode_n = -1;
+		      stop_on_m1 = true;
+		      fast_to_address = -1;
+		      cmdloop = false;
+
+		      // Turn off the flag that indicates that an opcode has been traced. This means that
+		      // we will only stop on M1 if a new instruction opcode (and bus transfers for that instruction as we stop
+		      // on M1) has been traced. This has the effect of making the 'next command' drive the bus until a new
+		      // instruction has been traced. This is a more intuitive behaviour than driving to M1 as that might
+		      // only drive until a half completed instruction has finished and not trace anything.
+		      opcode_traced = false;
+
+		      // We want to stop on a full instruction, i.e. not after a prefix instruction. This is so the
+		      // injected code (between instruction) is only executed when ther eis no outstanding prefix
+		      // opcode
+		      
+		      stop_on_full_instruction = true;
+		      break;
+
+		    case 'c':
+		      fast_mode = true;
+		      quiet = true;
+		      delay(100);
+		      fast_mode_n = -1;
+		      stop_on_m1 = true;
+		      fast_to_address = strtol((trace_cmd.c_str())+1, NULL, 16);
+		      cmdloop = false;
+		      break;
+
+		    case 'f':
+		      fast_mode = true;
+		      fast_mode_n = -1;
+		      quiet = true;
+		      delay(100);
+		      cmdloop = false;
+		      break;
+
+		    case 'g':
+		      // reset the instruction trace index so we always have a fresh trace for this
+		      // code. It makes it easier to examine later
+		      ii_trace_index = 0;
+		      
+		      fast_mode = true;
+		      fast_mode_n = -1;
+		      inter_inst = true;
+		      inter_inst_trace = true;
+		      inter_inst_code = inter_inst_code_regdump;
+		      inter_inst_code_length = sizeof(inter_inst_code_regdump);
+		      inter_inst_index = 0;
+		      quiet = true;
+		      uninterruptible_command = true;
+		      delay(100);
+		      cmdloop = false;
+
+		      // When completed, get register values
+		      ii_process_registers = true;
+		      break;
+
+		    case 'b':
+		      delay(100);
+		      trigger_address = strtol((trace_cmd.c_str())+1, NULL, 16);
+		      trigger_on = true;
+		      cmdloop=false;
+		      break;
+
+		    case 'B':
+		      trigger_on = !trigger_on;
+		      break;
+		      
+		    case 'M':
+		      // Select Mega control of reset and clock
+		      digitalWrite(SW0_Pin, HIGH);
+		      digitalWrite(SW1_Pin, LOW);
+		      break;
+		      
+		    case 'F':
+		      // Free run
+
+		      assert_signal(SIG_RES);
+
+		      // Mega relinquishes control of reset and clock, letting hw have it
+		      //
+		      digitalWrite(SW0_Pin, LOW);
+		      digitalWrite(SW1_Pin, LOW);
+
+		      // Mega relinquishes IO and memory map
+		      //
+		      digitalWrite(MAPRQI_Pin, LOW);
+		      digitalWrite(MAPRQM_Pin, LOW);
+
+		      // Reset the Z80
+		      //
+		      reset_z80();
+
+		      break;
+                  
+		    case 'I':
+		      digitalWrite(MAPRQI_Pin, HIGH);
+		      break;
+
+		    case 'i':
+		      digitalWrite(MAPRQI_Pin, LOW);
+		      break;
+
+		    case 'J':
+		      digitalWrite(MAPRQM_Pin, HIGH);
+		      break;
+
+		    case 'j':
+		      digitalWrite(MAPRQM_Pin, LOW);
+		      break;
+		      
+		    case 'G':
+		      bus_request();
+		      break;
+		      
+		    case 'R':
+		      bus_release();
+		      break;
+		      
+		    case 'r':
+		      cmd_reset_z80("");
+		      break;
+
+		    case '1':
+		      assert_signal(SIG_RES);
+		      break;
+		  
+		    case '0':
+		      deassert_signal(SIG_RES);
+		      break;
+		      
+		    case 'q':
+		      running = false;
+		      cmdloop = false;
+		      break;
+
+
+		    case '-':
+		    case '=':
+
+		      // Display trace data
+		      if (trace_cmd.charAt(0)=='=')
+			{
+			  trace_size = II_TRACE_SIZE;
+			  Serial.println(F("Inter Instruction Trace"));
+			}
+		      else
+			{
+			  trace_size = TRACE_SIZE;
+			  Serial.println(F("Trace"));
+			}
+		      
+		      for(int i=0; i<trace_size;i++)
+			{
+			  Serial.print(textify_trace_rec(i, (trace_cmd.charAt(0)=='=')?ii_trace: trace));
+			  if ( i == ((trace_cmd.charAt(0)=='=')?ii_trace_index: trace_index) )
+			    {
+			      Serial.println("  <- oldest");
+			    }
+			  else
+			    {
+			      Serial.println("");
+			    }
+			}
+		      break;
+
+		    case 'X':
+		      assert_signal(SIG_INT);
+		      break;
+
+		    case 'x':
+		      deassert_signal(SIG_INT);
+		      break;
+		      
+		    case 'Y':
+		      assert_signal(SIG_NMI);
+		      break;
+
+		    case 'y':
+		      deassert_signal(SIG_NMI);
+		      break;
+		      
+		    case '\r':
+		      cmdloop = false;
+		      break;
+		    }
+		
+		  Serial.print(F("trace> ")); Serial.flush();
+		  trace_cmd = "";
+		}
 	      
 	    }
 	}
@@ -2359,7 +3642,7 @@ void upload_to_bank(int bank)
 	{
 	case 'S':
 	  started = true;
-	  Serial.println("Started");
+	  Serial.println(F("Started"));
 	  break;
 	  
 	case ' ':
@@ -2402,10 +3685,14 @@ void upload_to_bank(int bank)
 	  ascii_address[4] = '\0';
 	  sscanf(ascii_address, "%x", &address);
 
-	  Serial.print("Address:");
-	  Serial.println(ascii_address);
-	  Serial.print("Length:");
-	  Serial.println(length);
+	  // Don't display debug for speed
+	  if ( 1 )
+	    {
+	      Serial.print(F("Address:"));
+	      Serial.println(ascii_address);
+	      Serial.print(F("Length:"));
+	      Serial.println(length);
+	    }
 	  
 	  if ( length == 0 )
 	    {
@@ -2457,6 +3744,7 @@ void cmd_memory(String cmd)
   int address = 0;
   int working_address = 0;
   int working_space = SIG_MREQ;
+  unsigned long start, end;
   
   // Grab the bus from the Z80 as we are going to do memory accesses ourselves
   bus_request();
@@ -2474,7 +3762,7 @@ void cmd_memory(String cmd)
       signal_scan();
 
       // Allow interaction
-      Serial.print("Working address: ");
+      Serial.print(F("Working address: "));
       Serial.print((unsigned short)working_address, HEX);
 
       Serial.print(" Space:");
@@ -2496,17 +3784,18 @@ void cmd_memory(String cmd)
       Serial.print("");
 
       
-      Serial.print(" Bus state:");
+      Serial.print(F(" Bus state:"));
       Serial.println(bsm_state_name());
 
-      Serial.println(" (r:Display memory  a:Set address  w:write byte  e:Erase flash sector         E:Erase chip)");
-      Serial.println(" (m:Mem space       i:IO space     b:Set bank    X:write example code to 0000 Y:write code to all banks)");
-      Serial.println(" (u:upload bin to flash bank 0)");
-      Serial.println(" (return:next q:quit)");
+      Serial.println(F(" (r:Display memory  a:Set address  w:write byte  e:Erase flash sector         E:Erase chip)"));
+      Serial.println(F(" (m:Mem space       i:IO space     b:Set bank    X:write example code to 0000 Y:write code to all banks)"));
+      Serial.println(F(" (d:Disassemble address)"));
+      Serial.println(F(" (u:upload bin to flash bank 0)"));
+      Serial.println(F(" (return:next q:quit)"));
       
       cmdloop=true;
 
-      Serial.print("memory> "); Serial.flush();
+      Serial.print(F("memory> ")); Serial.flush();
       String memory_cmd = "";
       while( cmdloop )
 	{
@@ -2515,129 +3804,156 @@ void cmd_memory(String cmd)
           char c = Serial.read();
           memory_cmd += c;
 
+#if ENABLE_LOCAL_ECHO	  
           // Echo back key
           //
           Serial.print( c ); Serial.flush();
-
+#endif
           if( c == '\n' || c == '\r' )
-          {
-            switch( memory_cmd.charAt(0) )
-            {
-            case 'u':
-              // Upload binary file to flash bank 0
-              Serial.println("Start upload of binary file. Will write to bank 0");
+	    {
+#if ENABLE_TIMINGS
+	      start = millis();
+#endif
+	    
+	      switch( memory_cmd.charAt(0) )
+		{
+		case 'u':
+		  // Upload binary file to flash bank 0
+		  Serial.println(F("Start upload of binary file. Will write to bank 0"));
 		  
-              upload_to_bank(0);
-              break;
+		  upload_to_bank(0);
+		  break;
 
-            case 'r':
-              // display memory at address
-              char ads[10];
-              BYTE d;
-              address=working_address;
-              for(int i=0; i<256; i++)
-                {
-                  if( (i%16)==0)
-                    {
-                      Serial.println("");
+#if ENABLE_DISASM_CMD
+		case 'd':
+		  // disassemble memory at address
+		  char bytes[32];
+
+		  address=working_address;
+		  for(int i=0; i<32; i++)
+		    {
+		      bytes[i] = read_cycle(address, working_space);
+		    }
+		  
+		  disasm(bytes, 10);
+		  break;
+#endif
+		  
+		case 'r':
+		  // display/disassemble memory at address
+		  char ads[10];
+		  BYTE d;
+		  address=working_address;
+		  for(int i=0; i<256; i++)
+		    {
+		      if( (i%16)==0)
+			{
+			  Serial.println("");
                       
-                      sprintf(ads, "%04X", address);
-                      Serial.print(ads);
-                      Serial.print(": ");
-                    }
-                  d = read_cycle(address, working_space);
-                  sprintf(ads, "%02X ", d);
-                  Serial.print(ads);
-                  address++;
-                }
-              Serial.println("");
-              break;
+			  sprintf(ads, "%04X", address);
+			  Serial.print(ads);
+			  Serial.print(": ");
+			}
+		      d = read_cycle(address, working_space);
+		      sprintf(ads, "%02X ", d);
+		      Serial.print(ads);
+		      address++;
+		    }
+		  Serial.println("");
+		  break;
 
-            case 'w':
-              delay(100);
-              write_cycle(working_address, strtol((memory_cmd.c_str())+1, NULL, 16), working_space);
-              break;
+		case 'w':
+		  delay(100);
+		  write_cycle(working_address, strtol((memory_cmd.c_str())+1, NULL, 16), working_space);
+		  break;
 
-            case 'm':
-              working_space = SIG_MREQ;
-              break;
+		case 'm':
+		  working_space = SIG_MREQ;
+		  break;
 
-            case 'i':
-              working_space = SIG_IOREQ;
-              break;
+		case 'i':
+		  working_space = SIG_IOREQ;
+		  break;
 		  
-            case 'a':
-              // Set address to manipulate
-              delay(100);
-              working_address = strtol((memory_cmd.c_str())+1, NULL, 16);
-              cmdloop=false;
-              break;
+		case 'a':
+		  // Set address to manipulate
+		  delay(100);
+		  working_address = strtol((memory_cmd.c_str())+1, NULL, 16);
+		  cmdloop=false;
+		  break;
               
-            case 'b':
-              // Write a bank value to bank register
-              delay(100);
+		case 'b':
+		  // Write a bank value to bank register
+		  delay(100);
               
-              write_cycle(IO_ADDR_BANK, strtol((memory_cmd.c_str())+1, NULL, 16), SIG_IOREQ);
-              cmdloop=false;
-              break;
+		  write_cycle(IO_ADDR_BANK, strtol((memory_cmd.c_str())+1, NULL, 16), SIG_IOREQ);
+		  cmdloop=false;
+		  break;
 
-            case 'e':
-              // Erase a sector
-              delay(100);
+		case 'e':
+		  // Erase a sector
+		  delay(100);
 
-              Serial.println("Starting erase...");
-              flash_erase(FLASH_ERASE_SECTOR_CMD, strtol((memory_cmd.c_str())+1, NULL, 16));
-              Serial.println("done.");
-              cmdloop=false;
-              break;
+		  Serial.println(F("Starting erase..."));
+		  flash_erase(FLASH_ERASE_SECTOR_CMD, strtol((memory_cmd.c_str())+1, NULL, 16));
+		  Serial.println("done.");
+		  cmdloop=false;
+		  break;
 
-            case 'E':
-              flush_serial();
+		case 'E':
+		  flush_serial();
 		  
-              // Erase a sector
-              Serial.println("Starting chip erase...");
-              flash_erase(FLASH_ERASE_CHIP_CMD, 0x5555);
-              Serial.println("done.");
-              cmdloop=false;
-              break;
+		  // Erase a sector
+		  Serial.println(F("Starting chip erase..."));
+		  flash_erase(FLASH_ERASE_CHIP_CMD, 0x5555);
+		  Serial.println("done.");
+		  cmdloop=false;
+		  break;
 
-            case 'X':
-              //flush_serial();
-              // Take the example code and write it to flash
-              for(int i=0; i<example_code_length; i++)
-                {
-                  flash_write_byte(0, i, example_code[i]);
-                }
-              break;
+		case 'X':
+		  //flush_serial();
+		  // Take the example code and write it to flash
+		  for(int i=0; i<example_code_length; i++)
+		    {
+		      flash_write_byte(0, i, example_code[i]);
+		    }
+		  break;
 
-            case 'Y':
-              //flush_serial();
+		case 'Y':
+		  //flush_serial();
 
-              // Take the example code and write it to all banks of flash 
-              for(int b=0; b<16;b++)
-                {
-                  Serial.print("Writing to bank ");
-                  Serial.println(b);
-                  for(int i=0; i<example_code_length; i++)
-                    {
-                      flash_write_byte(b, i, example_code[i]);
-                    }
-                }
-              break;
+		  // Take the example code and write it to all banks of flash 
+		  for(int b=0; b<16;b++)
+		    {
+		      Serial.print(F("Writing to bank "));
+		      Serial.println(b);
+		      for(int i=0; i<example_code_length; i++)
+			{
+			  flash_write_byte(b, i, example_code[i]);
+			}
+		    }
+		  break;
 		  
-            case 'q':
-              running = false;
-              cmdloop = false;
-              break;
+		case 'q':
+		  running = false;
+		  cmdloop = false;
+		  break;
 		      
-            case '\r':
-              cmdloop = false;
-              break;
-            }
+		case '\r':
+		  cmdloop = false;
+		  break;
+		}
 
-            memory_cmd = "";
-            Serial.print("memory> "); Serial.flush();
-          }
+#if ENABLE_TIMINGS
+	      end = millis();
+	      Serial.print(F("Elapsed:"));
+	      Serial.print(end-start);
+	      Serial.println("ms");
+#endif		  
+
+	      memory_cmd = "";
+	      Serial.print(F("memory> ")); Serial.flush();
+	    }
 	  
 	}
     }
@@ -2662,9 +3978,9 @@ void cmd_reset_z80(String cmd)
 
   reset_z80();
 
-  Serial.println( "\n------------------" );
-  Serial.println( "Z80 has been reset" );
-  Serial.println( "------------------" );
+  Serial.println( F("\n------------------") );
+  Serial.println( F("Z80 has been reset") );
+  Serial.println( F("------------------") );
 }
 
 
@@ -2691,25 +4007,28 @@ struct
     {"---",  "",                   cmd_dummy},
   };
 
+
+
 void print_commands()
 {
   int i = 0;
-
-  Serial.println( "\nCommand Menu" );
-  Serial.println( "============\n" );
+  
+  Serial.println( F("\nCommand Menu") );
+  Serial.println( F("============\n") );
 
   while( cmdlist[i].desc != "" )
-  {
-    Serial.print  ( cmdlist[i].cmdname );
-    Serial.print  ( ": " );
-    Serial.println( cmdlist[i].desc );
-    i++;
-  }
+    {
+      Serial.print  ( cmdlist[i].cmdname );
+      Serial.print  ( F(": ") );
+      Serial.println( cmdlist[i].desc );
+      i++;
+    }
 }
 
 // Interaction with the Mega from the host PC is through a 'monitor' command line type interface.
 
 const String monitor_cmds = "t: Trace code l:list example code s:set code m:memory";
+
 void run_monitor()
 {
   char c;
@@ -2724,10 +4043,12 @@ void run_monitor()
       //
       c = Serial.read();
 
+#if ENABLE_LOCAL_ECHO      
       // Echo back key
       //
       Serial.print( c ); Serial.flush();
-
+#endif
+      
       switch(c)
 	{
 	case '\r':
@@ -2737,15 +4058,27 @@ void run_monitor()
 	      test = cmd.substring(0, (cmdlist[i].cmdname).length());
 	      if( test == cmdlist[i].cmdname )
 		{
+		  unsigned long start, end;
+
 		  // Found, run the handler then represent the menu
 		  //
+		  
+#if ENABLE_TIMINGS
+		  start = millis();
+#endif
 		  (*(cmdlist[i].handler))(cmd);
+#if ENABLE_TIMINGS
+		  end = millis();
+		  Serial.print(F("Elapsed:"));
+		  Serial.print(end-start);
+		  Serial.println(F("ms"));
+#endif		  
 		  print_commands();
-
+		  
 		  Serial.print("\n");
 		}
 	    }
-
+	  
 	  cmd = "";
 	  break;
 
@@ -2840,18 +4173,18 @@ void setup()
   digitalWrite(SW0_Pin, HIGH);
   digitalWrite(SW1_Pin, LOW);
 
-  // initialize serial communication at 9600 bits per second:
+  // initialize serial communication
   Serial.begin(115200);
 
   for(int i=0; i<24; i++ )
     Serial.println("");
     
-  Serial.println("Z80 Shield Monitor");
-  Serial.println("    (Set line ending to carriage return)");
+  Serial.println(F("Z80 Shield Monitor"));
+  Serial.println(F("    (Set line ending to carriage return)"));
 
   // Use the command menu function because it outputs status to the user
   //
-  cmd_grab_z80("initialisation");
+  cmd_grab_z80(F("initialisation"));
 
   print_commands();
 
@@ -2887,3 +4220,1074 @@ void loop()
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+//
+//
+// Disassembler
+//
+//
+
+#if ENABLE_DISASM
+
+#define ENDIAN_SWAP(x) (((x&0xff)<<8)+((x&0xff00)>>8))
+
+// 8 bit load
+const char da_200[] PROGMEM =    "01rrrsss :LD r,s:";
+const char da_0[] PROGMEM =    "00rrr110 nn :LD r, n:";
+const char da_1[] PROGMEM =    "01rrr110 :LD r, (HL):";
+const char da_2[] PROGMEM =    "11y11101 01rrr110 dd :LD r, (y+d):";
+const char da_3[] PROGMEM =    "01110rrr :LD (HL), r:";
+const char da_4[] PROGMEM =    "11y11101 01110rrr dd :LD (y+d), r:";
+
+const char da_5[] PROGMEM =    "00pp0001 nn nn :LD p, n:";
+const char da_6[] PROGMEM =    "2A nn nn :LD HL,(nn):";
+const char da_7[] PROGMEM =    "00110110 nn :LD (HL), n:" ;
+const char da_8[] PROGMEM =    "11y11101 00110110 dd nn :LD (y+d), n:";
+const char da_9[] PROGMEM =    "02 :LD (BC),A:";
+const char da_10[] PROGMEM =    "12 :LD (DE),A:";
+const char da_11[] PROGMEM =    "3A nn nn :LD A, (nn):";
+const char da_12[] PROGMEM =    "1A :LD A,(DE):";
+const char da_13[] PROGMEM =    "0A :LD A,(BC):";
+const char da_14[] PROGMEM =    "32 nn nn :LD (nn), A:";
+    
+const char da_15[] PROGMEM =    "ED 57 :LD A,I:";
+const char da_16[] PROGMEM =    "ED 5F :LD, A,R:";
+const char da_17[] PROGMEM =    "ED 47 :LD I,A:";
+const char da_18[] PROGMEM =    "ED 4F :LD R,A:";
+
+    // 16 bit load
+const char da_19[] PROGMEM =    "00pp0001 nn nn :LD p, nn:";
+const char da_20[] PROGMEM =    "11y11101 21 nn nn :LD y, nn:";
+const char da_21[] PROGMEM =    "2A nn nn :LD HL, (nn):";
+const char da_22[] PROGMEM =    "ED 01pp1011 nn nn :LD p, (nn):";
+const char da_23[] PROGMEM =    "11y11101 2A nn nn :LD y, (nn):";
+const char da_24[] PROGMEM =    "22 nn nn :LD (nn), HL:";
+const char da_25[] PROGMEM =    "ED 01pp0011 nn nn :LD (nn), p:";
+const char da_26[] PROGMEM =    "11y11101 22 nn nn :LD (nn), y:";
+const char da_27[] PROGMEM =    "F9 :LD SP, HL:";
+const char da_28[] PROGMEM =    "11y11101 :LD SP, y:";
+const char da_29[] PROGMEM =    "11qq0101 :PUSH q:";
+const char da_30[] PROGMEM =    "11qq0001 :POP q:";
+const char da_31[] PROGMEM =    "11y11101 E5 :PUSH y:";
+const char da_32[] PROGMEM =    "11y11101 E1 :POP  y:";
+
+    // Exchange, block transfer and search
+const char da_33[] PROGMEM =    "EB :EX DE, HL:";
+const char da_34[] PROGMEM =    "08 :EX AF, AF':";
+const char da_35[] PROGMEM =    "D9 :EXX:";
+const char da_36[] PROGMEM =    "E3 :EX (SP), HL:";
+const char da_37[] PROGMEM =    "11y11101 E3 :EX(y), HL:";
+const char da_38[] PROGMEM =    "ED A0 :LDI:";
+const char da_39[] PROGMEM =    "ED B0 :LDIR:";
+const char da_40[] PROGMEM =    "ED A8 :LDD:";
+const char da_41[] PROGMEM =    "ED B8 :LDDR:";
+const char da_42[] PROGMEM =    "ED A1 :CPI:";
+const char da_43[] PROGMEM =    "ED B1 :CPIR:";
+const char da_44[] PROGMEM =    "ED A9 :CPD:";
+const char da_45[] PROGMEM =    "ED B9 :CPDR:";
+
+    // 8 bit arithmetic
+const char da_46[] PROGMEM =    "10000rrr :ADD A, r:";
+const char da_47[] PROGMEM =    "11000110 nn :ADD A, n:";
+const char da_48[] PROGMEM =    "86 :ADD A, (HL):";
+const char da_49[] PROGMEM =    "11y11101 86 dd :ADD A, (y+d):";
+
+const char da_50[] PROGMEM =    "10001rrr :ADC A, r:";
+const char da_51[] PROGMEM =    "11001110 nn :ADC A, n:";
+const char da_52[] PROGMEM =    "11y11101 8E dd :ADC A, (y+d):";
+
+const char da_53[] PROGMEM =    "10010rrr :SUB r:";
+const char da_54[] PROGMEM =    "11010110 nn :SUB n:";
+const char da_55[] PROGMEM =    "11y11101 96 dd :SUB (y+d):";
+
+const char da_56[] PROGMEM =    "10011rrr :SBC A, r:";
+const char da_57[] PROGMEM =    "11011110 nn :SBC A, n:";
+const char da_58[] PROGMEM =    "11y11101 9E dd :SBC A, (y+d):";
+
+const char da_59[] PROGMEM =    "10100rrr :AND r:";
+const char da_60[] PROGMEM =    "11100110 nn :AND n:";
+const char da_61[] PROGMEM =    "11y11101 A6 dd :AND (y+d):";
+    
+const char da_62[] PROGMEM =    "10110rrr :OR r:";
+const char da_63[] PROGMEM =    "11110110 nn :OR n:";
+const char da_64[] PROGMEM =    "11y11101 B6 dd :OR (y+d):";
+
+const char da_65[] PROGMEM =    "10101rrr :XOR r:";
+const char da_66[] PROGMEM =    "11101110 nn :XOR n:";
+const char da_67[] PROGMEM =    "11y11101 AE dd :XOR (y+d):";
+
+const char da_68[] PROGMEM =    "10111rrr :CP r:";
+const char da_69[] PROGMEM =    "11111110 nn :CP n:";
+const char da_70[] PROGMEM =    "11y11101 BE dd :CP (y+d):";
+
+const char da_71[] PROGMEM =    "00rrr100 :INC r:";
+const char da_72[] PROGMEM =    "11y11101 34 dd :INC (y+d):";
+    
+const char da_73[] PROGMEM =    "00rrr101 :DEC r:";
+const char da_74[] PROGMEM =    "11y11101 35 dd :DEC (y+d):";
+
+    // General purpose arithmetic and CPU control
+const char da_75[] PROGMEM =    "27 :DAA:";
+const char da_76[] PROGMEM =    "2F :CPL:";
+const char da_77[] PROGMEM =    "ED 44 :NEG:";
+const char da_78[] PROGMEM =    "3F :CCF:";
+const char da_79[] PROGMEM =    "37 :SCF:";
+const char da_80[] PROGMEM =    "00 :NOP:";
+const char da_81[] PROGMEM =    "76 :HALT:";
+const char da_82[] PROGMEM =    "F3 :DI:";
+const char da_83[] PROGMEM =    "FB :EI:";
+const char da_84[] PROGMEM =    "ED 46 :IM 0:";
+const char da_85[] PROGMEM =    "ED 56 :IM 1:";
+const char da_86[] PROGMEM =    "ED 5E :IM 2:";
+
+    // 16 bit arithmetic
+const char da_87[] PROGMEM =    "00pp1001 :ADD HL, p:";
+const char da_88[] PROGMEM =    "ED 01pp1010 :ADC HL, p:";
+const char da_89[] PROGMEM =    "ED 01pp0010 :SBC HL, p:";
+const char da_90[] PROGMEM =    "DD 00pp1001 :SBC HL, px:";
+const char da_91[] PROGMEM =    "FD 00pp1001 :SBC HL, py:";
+const char da_92[] PROGMEM =    "00pp0011 :INC p:";
+const char da_93[] PROGMEM =    "11y11101 23 :INC y:";
+const char da_94[] PROGMEM =    "00pp1011 :DEC p:";
+const char da_95[] PROGMEM =    "11y11101 2B :DEC y:";
+
+    // Rotate and shift
+const char da_96[] PROGMEM =    "07 :RLCA:";
+const char da_97[] PROGMEM =    "17 :RLA:";
+const char da_98[] PROGMEM =    "0F :RRCA:";
+const char da_99[] PROGMEM =    "1F :RRA:";
+const char da_100[] PROGMEM =    "CB 00000rrr :RLC r:";
+const char da_101[] PROGMEM =    "11y11101 CB dd 06 :RLC (y+d):";
+
+const char da_102[] PROGMEM =    "CB 00010rrr :RL r:";
+const char da_103[] PROGMEM =    "11y11101 CB dd 16 :RL (y+d):";
+
+const char da_104[] PROGMEM =    "CB 00001rrr :RRC r:";
+const char da_105[] PROGMEM =    "11y11101 CB dd 0E :RRC (y+d):";
+    
+const char da_106[] PROGMEM =    "CB 00011rrr :RR r:";
+const char da_107[] PROGMEM =    "11y11101 CB dd 1E :RR (y+d):";
+
+const char da_108[] PROGMEM =    "CB 00100rrr :SLA r:";
+const char da_109[] PROGMEM =    "11y11101 CB dd 26 :SLA (y+d):";
+
+const char da_110[] PROGMEM =    "CB 00101rrr :SRA r:";
+const char da_111[] PROGMEM =    "11y11101 CB dd 2E :SRA (y+d):";
+
+const char da_112[] PROGMEM =    "CB 001!1rrr :SRL r:";
+const char da_113[] PROGMEM =    "11y11101 CB dd 3E :SRL (y+d):";
+
+const char da_114[] PROGMEM =    "ED 6F :RLD:";
+const char da_115[] PROGMEM =    "ED 67 :RRD:";
+
+    // Bit set, reset and test
+const char da_116[] PROGMEM =    "CB 01bbbrrr :BIT b, r:";
+const char da_117[] PROGMEM =    "11y11101 CB dd 01bbb110 :BIT b, (y+d):";
+const char da_118[] PROGMEM =    "CB 11bbbrrr :SET b, r:";
+const char da_119[] PROGMEM =    "11y11101 CB dd 01bbb110 :SET b, (y+d):";
+const char da_120[] PROGMEM =    "CB 10bbbrrr :RES b, r:";
+const char da_121[] PROGMEM =    "11y11101 CB dd 10bbb110 :RES b, (y+d):";
+
+    // Jump
+const char da_122[] PROGMEM =    "C3 nn nn :JP nn:";
+const char da_123[] PROGMEM =    "11ccc010 nn nn :JP c, nn:";
+const char da_124[] PROGMEM =    "18 ee :JR e:";
+const char da_125[] PROGMEM =    "38 ee :JR C, e:";
+const char da_126[] PROGMEM =    "30 ee :JR NC, e:";
+const char da_127[] PROGMEM =    "28 ee :JR Z, e:";
+const char da_128[] PROGMEM =    "20 ee :JR NZ, e:";
+const char da_129[] PROGMEM =    "E9 :JP (HL):";
+const char da_130[] PROGMEM =    "11y11101 E9 :JP(y):";
+const char da_131[] PROGMEM =    "10 ee :DJNZ e:";
+const char da_132[] PROGMEM =    "38 ee :JR C, e:";
+
+    // Call and return
+const char da_133[] PROGMEM =    "CD nn nn :CALL nn:";
+const char da_134[] PROGMEM =    "11ccc100 nn nn :CALL cc, nn:";
+const char da_135[] PROGMEM =    "C9 :RET:";
+const char da_136[] PROGMEM =    "11ccc000 :RET c:";
+const char da_137[] PROGMEM =    "ED 4D :RETI:";
+const char da_138[] PROGMEM =    "ED 45 :RETN:";
+const char da_139[] PROGMEM =    "11ttt111 :RST t:";
+
+    // Input and output
+const char da_140[] PROGMEM =    "DB nn :IN A, (n):";
+const char da_141[] PROGMEM =    "ED 01rrr000 :IN r, (C):";
+const char da_142[] PROGMEM =    "ED A2 :INI:";
+const char da_143[] PROGMEM =    "ED B2 :INIR:";
+const char da_144[] PROGMEM =    "ED AA :IND:";
+const char da_145[] PROGMEM =    "ED BA :INDR:";
+const char da_146[] PROGMEM =    "D3 nn :OUT (n), A:";
+const char da_147[] PROGMEM =    "ED 01rrr001 :OUT (C), r:";
+const char da_148[] PROGMEM =    "ED A3 :OUTI:";
+const char da_149[] PROGMEM =    "ED B3 :OTIR:";
+const char da_150[] PROGMEM =    "ED AB :OUTD:";
+const char da_151[] PROGMEM =    "ED BB :OTDR:";
+const char da_999[] PROGMEM =    "";
+
+const char * const disasm_desc_p[] PROGMEM =
+  {
+    da_200,
+    da_0,
+    da_1,
+    da_2,
+    da_3,
+    da_4,
+    da_5,
+    da_6,
+    da_7,
+    da_8,
+    da_9,
+    da_10,
+    da_11,
+    da_12,
+    da_13,
+    da_14,
+    da_15,
+    da_16,
+    da_17,
+    da_18,
+    da_19,
+    da_20,
+    da_21,
+    da_22,
+    da_23,
+    da_24,
+    da_25,
+    da_26,
+    da_27,
+    da_28,
+    da_29,
+    da_30,
+    da_31,
+    da_32,
+    da_33,
+    da_34,
+    da_35,
+    da_36,
+    da_37,
+    da_38,
+    da_39,
+    da_40,
+    da_41,
+    da_42,
+    da_43,
+    da_44,
+    da_45,
+    da_46,
+    da_47,
+    da_48,
+    da_49,
+    da_50,
+    da_51,
+    da_52,
+    da_53,
+    da_54,
+    da_55,
+    da_56,
+    da_57,
+    da_58,
+    da_59,
+    da_60,
+    da_61,
+    da_62,
+    da_63,
+    da_64,
+    da_65,
+    da_66,
+    da_67,
+    da_68,
+    da_69,
+    da_70,
+    da_71,
+    da_72,
+    da_73,
+    da_74,
+    da_75,
+    da_76,
+    da_77,
+    da_78,
+    da_79,
+    da_80,
+    da_81,
+    da_82,
+    da_83,
+    da_84,
+    da_85,
+    da_86,
+    da_87,
+    da_88,
+    da_89,
+    da_90,
+    da_91,
+    da_92,
+    da_93,
+    da_94,
+    da_95,
+    da_96,
+    da_97,
+    da_98,
+    da_99,
+    da_100,
+    da_101,
+    da_102,
+    da_103,
+    da_104,
+    da_105,
+    da_106,
+    da_107,
+    da_108,
+    da_109,
+    da_110,
+    da_111,
+    da_112,
+    da_113,
+    da_114,
+    da_115,
+    da_116,
+    da_117,
+    da_118,
+    da_119,
+    da_120,
+    da_121,
+    da_122,
+    da_123,
+    da_124,
+    da_125,
+    da_126,
+    da_127,
+    da_128,
+    da_129,
+    da_130,
+    da_131,
+    da_132,
+    da_133,
+    da_134,
+    da_135,
+    da_136,
+    da_137,
+    da_138,
+    da_139,
+    da_140,
+    da_141,
+    da_142,
+    da_143,
+    da_144,
+    da_145,
+    da_146,
+    da_147,
+    da_148,
+    da_149,
+    da_150,
+    da_151,
+    da_999,
+  };
+
+#define NUM_DISASM_DESC (sizeof(disasm_desc_p))
+
+boolean word_literal(char *word)
+{
+  boolean is_literal = true;
+  char *original_word = word;
+  
+  // A word is literal if it has no lower case characters
+  while(*word != '\0')
+    {
+      if ( islower(*(word++)) )
+	{
+	  is_literal = false;
+	}
+      word++;
+    }
+
+  //printf("\n%s %s literal", original_word, is_literal?"is":"is not");
+  return(is_literal);
+}
+
+// Field values are global
+typedef struct _field
+{
+  char name;
+  int value;
+} FIELD;
+
+int num_fields;
+FIELD fields[8];
+
+void dump_fields(void)
+{
+  int i;
+
+  printf("\nFields\n");
+  
+  for(i=0; i< num_fields; i++)
+    {
+      printf("\n%d : %c = %d", i, fields[i].name, fields[i].value);
+    }
+
+  printf("\n");
+}
+
+int find_field(char name)
+{
+  int i;
+  
+  for(i=0; i<num_fields; i++)
+    {
+      if( fields[i].name == name )
+	{
+	  return(i);
+	}
+    }
+  return(-1);
+}
+
+void add_to_value(char name, int value, int radix)
+{
+  int index = find_field(name);
+
+  if( index == -1 )
+    {
+      index = num_fields++;
+      fields[index].name = name;
+      fields[index].value = 0;
+    }
+  
+  fields[index].value *= radix;
+  fields[index].value += value;
+  //  Serial.println("\nField %d: Add %d(%d) : %c     -> %d", index, value, radix, fields[index].name, fields[index].value);
+}
+
+void set_field_value(char name, int value)
+{
+  int i;
+  
+  for(i=0; i<num_fields; i++)
+    {
+      if( fields[i].name == name )
+	{
+	  fields[i].value = value;
+	  return;
+	}
+    }
+
+  //Serial.print("\nNew field set field %c to %d");
+  //Serial.print(name);
+  //Serial.println(value);
+  fields[num_fields].name = name;
+  fields[num_fields].value = value;
+  num_fields++;
+  //Serial.print("\n Now %d fields ");
+  //Serial.println(num_fields);
+}
+
+// Initialise any fields that are present in the word
+void init_field_values(char *word)
+{
+  num_fields = 0;
+  
+  while(*word != '\0')
+    {
+      if( islower(*word) )
+	{
+	  // Got a field character, do we already have a field for this?
+	  // Zero field
+	  set_field_value(*word, 0);
+	}
+      word++;
+    }
+}
+
+boolean match_word(char *word, unsigned char byte)
+{
+  int vword;
+  boolean matches = false;
+  char b[8];
+  int i;
+  int char_i;
+  
+  //printf("\n%s", __FUNCTION__);
+  
+  // See if the word is a literal value
+  if( word_literal(word))
+    {
+      //Serial.println("Literal");
+      
+      // If the word is two characters then it matches the byte as hex
+      // If 8 characters then it matches as binary
+      
+      switch(strlen(word))
+	{
+	case 2:
+	  // Get value if it is a literal hex byte
+	  sscanf(word, "%02X", &vword);
+
+	  // Do we have a match?
+	  if( vword == byte)
+	    {
+	      matches = true;	      
+	    }
+	  break;
+	  
+	case 8:
+
+	  // Convert literal binary to value
+	  vword = 0;
+	  
+	  for(i=0; i<8; i++)
+	    {
+	      vword *= 2;
+	      vword+= word[i]=='0'?0:1;
+	    }
+	  
+	  // Do we have a match?
+	  if( vword == byte)
+	    {
+	      matches = true;	      
+	    }
+	  
+	  break;
+	  
+	default:
+	  // Bad
+	  break;
+	}
+    }
+  else
+    {
+      int nibble_mask;
+      int bit_mask;
+      int charval;
+      int wordval;
+
+      matches = true;
+      
+      // Word has fields in it
+      
+      // Build up the field values and names
+      switch(strlen(word))
+	{
+	case 2:
+	  //Serial.println("\n>>> Hex ");
+	  
+	  // Hex digits represent nibbles
+	  nibble_mask = 0xf0;
+	  char_i = strlen(word);
+	  
+	  while(*word != '\0' )
+	    {
+	      switch(*word)
+		{
+		case '0':
+		case '1':
+		case '2':
+		case '3':
+		case '4':
+		case '5':
+		case '6':
+		case '7':
+		case '8':
+		case '9':
+		case 'A':
+		case 'B':
+		case 'C':
+		case 'D':
+		case 'E':
+		case 'F':
+		  // See if the nibble matches
+		  charval = (byte & nibble_mask) >> (4*(char_i-1));
+		  sscanf(word, "%1X", &wordval);
+
+		  if( charval != wordval )
+		    {
+		      matches = false;
+		    }
+		  break;
+
+		default:
+		  //printf("\n>>>>%d %c", char_i, *word);
+		  
+		  // process nibble
+		  charval = (byte & nibble_mask) >> (4*(char_i-1));
+		  
+		  //printf("\n>>>>%d %d %d", charval, nibble_mask, byte);
+		  
+		  // Add this nibble to the field value
+		  add_to_value(*word, charval, 16);
+		  break;
+		}
+	      
+	      word++;
+	      nibble_mask>>=4;
+	      char_i--;
+	      
+	    }
+	  
+	  break;
+
+	case 8:
+	  //Serial.println("\n>>> Binary");
+
+
+	  // Binary digits represent bits
+	  bit_mask = 0x80;
+	  char_i = strlen(word);
+	  
+	  while(*word != '\0' )
+	    {
+	      switch(*word)
+		{
+		case '0':
+		case '1':
+		  // See if the nibble matches
+		  charval = (byte & bit_mask) >> (1*(char_i-1));
+		  sscanf(word, "%1d", &wordval);
+
+		  if( charval != wordval )
+		    {
+		      matches = false;
+		    }
+		  break;
+
+		  
+		default:
+		  //printf("\n>>>>%d %c", char_i, *word);
+		  
+		  // process bit
+		  charval = (byte & bit_mask) >> (1*(char_i-1));
+		  
+		  //printf("\n>>>>%d %d %d", charval, bit_mask, byte);
+		  
+		  // Add this bit to the field value
+		  add_to_value(*word, charval, 2);
+		  break;
+
+		  
+		}
+	      word++;
+	      bit_mask>>=1;
+	      char_i--;
+	    }
+	  break;
+
+	default:
+	  // Bad
+	  break;
+	}
+      
+
+    }
+  
+  //printf("\nWord:'%s' Byte:%02X", word, byte);
+  //printf("\nWord value    :%02X", vword);
+  //printf("\nWord and byte %s", matches?"match":"do not match");
+  //printf("\n");
+  return(matches);
+}
+
+// Returns number of matching bytes
+
+boolean disasm_desc_match(char *disasm_desc, unsigned char *bytes)
+{
+  int di;    // disasm_desc string index
+  int bi;    // byte list index
+  boolean all_match = true;
+  boolean done = false;
+  int num_words = 0;
+  
+  char word[20];
+  char c[2];
+
+  //printf("\nDISASM_DESC:'%s'", disasm_desc);
+
+  // The disasm_desc has words that encode the instruction, process them in order
+  // one word per byte
+  di = 0;
+  word[0] = '\0';
+
+  // Get words and process them
+  while ( !done && (strlen(disasm_desc) > 0) )
+    {
+      //Serial.print("\ndoing ");
+      //Serial.println(*disasm_desc);
+      
+      switch(*disasm_desc)
+	{
+
+	case ':':
+	  // If we get the string marker then all bytes have to have matched
+	  if( !all_match )
+	    {
+	      // Not a match
+	      return(0);
+	    }
+
+	  // We have a match
+	  return(num_words);
+	  break;
+	  
+	  // Start of new word, process previous one
+	case '\0':
+	case ' ':
+
+	  // Process word
+	  if( !match_word(word, *(bytes++)) )
+	    {
+	      all_match = false;
+	    }
+	  num_words++;
+	  
+	  word[0] = '\0';
+	  break;
+
+	default:
+	  c[0] = *disasm_desc;
+	  c[1] = '\0';
+	  strcat(word, c);
+
+	  if( strlen(disasm_desc) == 1 )
+	    {
+	      if( !match_word(word, *(bytes++)) )
+		{
+		  all_match = false;
+		}
+
+	      num_words++;
+	    }
+	  break;
+	}
+
+     
+      disasm_desc++;
+    }
+  
+  // If the number of matches equals the length then the next word should be the
+  // format string
+  if( all_match )
+    {
+      //printf("\nBytes match ");
+      return(num_words);
+    }
+  else
+    {
+        return(0);
+    }
+}
+
+// We have a disasm_desc and some bytes, we now have to decode the disasm_desc and create the
+// disassembled instruction
+
+char decode_string[40];
+
+char * disasm_desc_decode(char *disasm_desc, unsigned char *bytes)
+{
+
+  int i;
+  char fmt_str[40];
+  char field_val[10];
+  int field_i;
+  
+  dump_fields();
+  
+  //printf("\nDECODE:%s", disasm_desc);
+  boolean done = false;
+  decode_string[0] = '\0';
+  
+  fmt_str[0] = '\0';
+  
+  for(i=0; (i<strlen(disasm_desc)) && !done; i++)
+    {
+      switch(*(disasm_desc+i))
+	{
+	case ':':
+	  // Get the format string
+	  strcpy(fmt_str, disasm_desc+i+1);
+	  fmt_str[strlen(disasm_desc+i)-2] = '\0';
+	  done = true;
+	  break;
+	  
+	default:
+	  break;
+	}
+    }
+  
+  // Build the result, substituting fields as needed
+  for(i=0; i<strlen(fmt_str); i++ )
+    {
+      if( islower(fmt_str[i]) )
+	{
+	  field_i = find_field(fmt_str[i]);
+	  
+	  if ( field_i == -1 )
+	    {
+	      strcat(decode_string, "?");
+	    }
+	  else
+	    {
+	      switch(fields[field_i].name)
+		{
+		  
+		case 'b':
+		  sprintf(field_val, "%d", fields[field_i].value);
+		  strcat(decode_string, field_val);
+		  break;
+		  
+		case 'e':
+		  sprintf(field_val, "%02XH", fields[field_i].value);
+		  strcat(decode_string, field_val);
+		  break;
+
+		case 't':
+		  sprintf(field_val, "%02XH", fields[field_i].value*8);
+		  strcat(decode_string, field_val);
+		  break;
+
+		case 'c':
+		  // c or cc show condition code
+		  if( fmt_str[i+1] == 'c' )
+		    {
+		      i++;
+		    }
+		  switch(fields[field_i].value)
+		    {
+		    case 0:
+		      strcat(decode_string, "NZ");
+		      break;
+		    case 1:
+		      strcat(decode_string, "Z");
+		      break;
+		    case 2:
+		      strcat(decode_string, "NC");
+		      break;
+		    case 3:
+		      strcat(decode_string, "C");
+		      break;
+		    case 4:
+		      strcat(decode_string, "PO");
+		      break;
+		    case 5:
+		      strcat(decode_string, "PE");
+		      break;
+		    case 6:
+		      strcat(decode_string, "P");
+		      break;
+		    case 7:
+		      strcat(decode_string, "M");
+		      break;
+		    }
+		  
+
+		  break;
+
+		case 'n':
+		case 'd':
+		  // n is 8 bit
+		  // nn is 16 bit
+		  // dn shouldn't be used, but would be 16 bit
+		  if( fmt_str[i+1] == 'n' )
+		    {
+		      // Endian swap
+		      
+		      sprintf(field_val, "%04XH", ENDIAN_SWAP(fields[field_i].value));
+		      strcat(decode_string, field_val);
+		      i++;
+		    }
+		  else
+		    {
+		      sprintf(field_val, "%02XH", fields[field_i].value);
+		      strcat(decode_string, field_val);
+		    }
+		  break;
+
+		case 'q':
+		  switch(fields[field_i].value)
+		    {
+		    case 0:
+		      strcat(decode_string, "BC");
+		      break;
+		    case 1:
+		      strcat(decode_string, "DE");
+		      break;
+		    case 2:
+		      strcat(decode_string, "HL");
+		      break;
+		    case 3:
+		      strcat(decode_string, "AF");
+		      break;
+		    }
+		  break;
+
+		case 'r':
+		case 's':
+		  switch(fields[field_i].value)
+		    {
+		    case 0:
+		      strcat(decode_string, "B");
+		      break;
+		    case 1:
+		      strcat(decode_string, "C");
+		      break;
+		    case 2:
+		      strcat(decode_string, "D");
+		      break;
+		    case 3:
+		      strcat(decode_string, "E");
+		      break;
+		    case 4:
+		      strcat(decode_string, "H");
+		      break;
+		    case 5:
+		      strcat(decode_string, "L");
+		      break;
+		    case 6:
+		      strcat(decode_string, "(HL)");
+		      break;
+		    case 7:
+		      strcat(decode_string, "A");
+		      break;
+		    }
+		  break;
+
+		  // IY is 1 bit
+
+		case 'y':
+		  switch(fields[field_i].value)
+		    {
+		    case 0:
+		      strcat(decode_string, "IX");
+		      break;
+		    case 1:
+		      strcat(decode_string, "IY");
+		      break;
+		    }
+		  break;
+		  
+		case 'p':
+		  switch(fields[field_i].value)
+		    {
+		    case 0:
+		      strcat(decode_string, "BC");
+		      break;
+		    case 1:
+		      strcat(decode_string, "DE");
+		      break;
+		    case 2:
+// If next char is x or y then modify
+		      switch( fmt_str[i+1] )
+			{
+			case 'x':
+			  strcat(decode_string, "IX");
+			  i++;
+			  break;
+
+			case 'y':
+			  strcat(decode_string, "IY");
+			  i++;
+			  break;
+
+			default:
+			  strcat(decode_string, "HL");
+			  break;
+			}
+
+		      break;
+		    case 3:
+		      strcat(decode_string, "SP");
+		      break;
+		    }
+		  break;
+		}
+	      
+	    }
+	  
+	}
+      else
+	{
+	  sprintf(field_val, "%c", fmt_str[i]);
+	  strcat(decode_string, field_val);
+	  
+	}
+      
+    }
+  
+  //printf("\nFMT str:'%s'", fmt_str);
+  //printf("\n                                               %s", decode_string);
+  
+}
+
+
+char disasm_desc[30];
+
+// Length prefixed bytes
+void disasm(unsigned char *bytes, int num_bytes)
+{
+  int i, j;
+  int num_match = 0;
+  int total_matched = 0;
+  unsigned char *start = bytes;
+  boolean any_match;
+  char byte_str[3] = "..";
+  
+  while( bytes < (start+num_bytes) )
+    {
+      any_match = false;
+      for(i=0; i< NUM_DISASM_DESC; i++)
+	{
+	  // Copy desc into RAM
+	  strcpy_P(disasm_desc, (char *)pgm_read_word(&(disasm_desc_p[i])));
+	  //Serial.println(disasm_desc);
+	  
+	  // Reset field values
+	  num_fields = 0;
+
+	  // End of disasm_desc list
+	  if( strlen(disasm_desc) == 0 )
+	    {
+	      break;
+	    }
+
+	  // Does this one match?
+	  if ( (num_match = disasm_desc_match(disasm_desc, bytes)) > 0 )
+	    {
+	      Serial.println("  >>match");
+	      any_match = true;
+	      
+	      // Yes, get decoded instruction
+	      disasm_desc_decode(disasm_desc, bytes);
+	      
+	      total_matched += num_match;
+
+	      Serial.print("\n>>");
+	      
+	      for(j=0; j<num_match; j++)
+		{
+		  sprintf(byte_str, "%02X", *(bytes+j));
+		  Serial.print(":");
+		  Serial.print(byte_str);
+		}
+	      
+	      for(; j<6; j++)
+		{
+		  Serial.print("   ");
+		}
+	      
+	      bytes += num_match;	      
+	      Serial.print( decode_string);
+	      break;
+	    }
+	  
+	  dump_fields();
+	}
+      
+      if( !any_match )
+	{
+	  //printf("\nNo match at:");
+	  for(i=0; i<10; i++)
+	    {
+	      //printf("\n%02X", *(bytes+i));
+	    }
+	  break;
+	}
+    }
+}
+
+#endif

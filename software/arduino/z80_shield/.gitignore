@@ -1,0 +1,6 @@
+# ignore for software/arduino/z80_shield
+*~
+*.ihx
+*.bin
+zcc_opt.def
+ii
