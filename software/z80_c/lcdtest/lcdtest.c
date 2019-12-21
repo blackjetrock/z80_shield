@@ -24,7 +24,7 @@ int main(void)
   // Prescaler 16
   //z80_shield_ctc_channel_init(0, 0x05, 0x20);
   // Prescaler 256
-  z80_shield_ctc_channel_init(0, 0x25, 0x20);
+  z80_shield_ctc_channel_init(0, 0x25, 0x50);
   
   lcd_initialise();
   lcd_display("Hello World ");
@@ -33,8 +33,8 @@ int main(void)
   while(1)
     {
       lcd_cursor_line_col(1,0);
-      //sprintf(x, "%03d", z80_shield_ctc_read(0));
-      sprintf(x, "%03d", y++);
+      sprintf(x, "%03d", z80_shield_ctc_read(0));
+      //sprintf(x, "%03d", y++);
       lcd_display(x);
       
     }
