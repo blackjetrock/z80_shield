@@ -35,7 +35,7 @@ It's in the Arduino sketch that is run on the Mega, there's no need to assemble 
 To interact with the shield you can use the Arduino SDK serial monitor, or the z80s_term.tcl script. The script is a 
 bit better as it has support for register dumping and some other things.
 
-Plug a USb cable into your computer and the other end into the USB connector on the Mega. (The USB connector on the shield 
+Plug a USB cable into your computer and the other end into the USB connector on the Mega. (The USB connector on the shield 
 is used to power the shield when it is running as a stand-alone single board computer (SBC).
 
 Determine which ttyUSB the shield is attached as (Run dmesg after plugging the shield in and check for the last device 
@@ -45,8 +45,7 @@ Clone the github repository.
 
 Run z80_shield/software/scripts/z80s_term.tcl:
 
-
-./z80s_term.tcl /dev/ttyUSB0
+  ./z80s_term.tcl /dev/ttyUSB0
 
 If you can't access the USB device without running as root, then run as root or sort the permissions out:
 
