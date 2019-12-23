@@ -45,10 +45,11 @@ Clone the github repository.
 
 Run z80_shield/software/scripts/z80s_term.tcl:
 
-  ./z80s_term.tcl /dev/ttyUSB0
+    ./z80s_term.tcl /dev/ttyUSB0
 
 If you can't access the USB device without running as root, then run as root or sort the permissions out:
 
+```
 Opening /dev/ttyUSB0
 Error in startup script: couldn't open "/dev/ttyUSB0": permission denied
     while executing
@@ -56,17 +57,20 @@ Error in startup script: couldn't open "/dev/ttyUSB0": permission denied
     invoked from within
 "set f [open $device r+]"
     (file "./z80s_term.tcl" line 12)
-
+```
 
 Run as root:
 
+```
 sudo ./z80s_term.tcl /dev/ttyUSB0
+```
 
 Two windows should appear. One is a terminal window that you type commands in and the other is a window where the register 
 contents will appear when you ask for them.
 
 You should see something like this in the terminal window:
 
+```
 Z80 Shield Monitor
     (Set line ending to carriage return)
 -------------------------------------------------------------------
@@ -82,9 +86,11 @@ m: Memory management
 r: Reset the Z80
 This sketch build is not emulating ROM, so we're going to
 run whatever is in the flash chip
+```
 
 This is the main menu for the Z80 shield. the other window should have something like:
 
+```
   PC : .... ....
   SP : .... ....
   AF : .... ....
@@ -99,6 +105,7 @@ This is the main menu for the Z80 shield. the other window should have something
   IY : .... ....
   I  : .... ....
   R  : .... ....
+```
 
 in it. This is where the Z80 register contents will be displayed if you ask for them to be dumped.
 
