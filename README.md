@@ -638,4 +638,202 @@ State: Idle
 
 Now the data on the bus has been clocked into the Z80. RD and MREQ are de-asserted but RFSH has been asserted. The Z80 performs a memory refressh cycle after every opcode fetch, which is designed for dynamic RAM refresh. We have static RAM so don't need this, but we have to step past it to get to the next part of the instruction fetch. 
 
-Press enter a few times until the RFSH line isn't asserted any more.
+Press enter a few times until the RFSH line isn't asserted any more:
+```
+trace> 
+trace> Bus state:Memory Access
+Addr:0001  Data:00
+BUSREQ: 1      (Mega --> Z80)
+BUSACK: 1      (Z80  --> Mega)
+    M1: 1      (Z80  --> Mega)
+  MREQ: 1      (Z80  --> Mega)
+ IOREQ: 1      (Z80  --> Mega)
+  RFSH: 1      (Z80  --> Mega)
+    WR: 1      (Z80  --> Mega)
+    RD: 1      (Z80  --> Mega)
+   NMI: 1      (Mega --> Z80)
+   INT: 1      (Mega --> Z80)
+  WAIT: 1      (Mega --> Z80)
+   CLK: 1      (Mega --> Z80)
+   RES: 1      (Mega --> Z80)
+MAPRQM: 0      (Mega --> Shield)  - Mega is not providing memory (Flash and RAM) contents (real hardware is mapped)
+MAPRQI: 0      (Mega --> Shield)  - Mega is not providing IO (GPIO, CTC) contents (real hardware is mapped)
+    X1: 1      (Z80  --> Mega)
+
+  RFSH DEASSERT
+   CLK DEASSERT
+Trace Menu
+==========
+t:Mega drive n tstates       f:Mega drive tstates forever
+c:Mega drive tstates, continues to given Z80 instruction address
+n:Mega drive tstates until next Z80 instruction
+F:Free run (at ~4.5MHz)      M:Mega provide clock (at ~80Hz)
+G:Mega take Z80 bus (BUSREQ) R:Mega release Z80 bus
+I:Mega take IO map           i:Hardware take IO map
+J:Mega take memory map       j:Hardware take memory map
+r:reset Z80
+1:assert reset               0:deassert reset
+b:Breakpoint                 B:Toggle breakpoint
+-:Display trace              =:Display II Trace
+X:Assert INT x:desaart INT   Y:Assert NMI  y:Deassert NMI
+return: drive half a clock   q:quit menu
+trace> 
+```
+
+You can probably see now how to single step code in the Z80. Press enter a few more times and you will see the Z80 read data from addresses 0x0001 and 0x0002. Stop when M1 is asserted at address 0x0003 and you have this display:
+
+```
+trace> Bus state:Idle
+PC:0003  Data:90
+BUSREQ: 1      (Mega --> Z80)
+BUSACK: 1      (Z80  --> Mega)
+    M1: 0      (Z80  --> Mega)    - Asserted, means Z80 is doing an opcode fetch cycle
+  MREQ: 1      (Z80  --> Mega)
+ IOREQ: 1      (Z80  --> Mega)
+  RFSH: 1      (Z80  --> Mega)
+    WR: 1      (Z80  --> Mega)
+    RD: 1      (Z80  --> Mega)
+   NMI: 1      (Mega --> Z80)
+   INT: 1      (Mega --> Z80)
+  WAIT: 1      (Mega --> Z80)
+   CLK: 1      (Mega --> Z80)
+   RES: 1      (Mega --> Z80)
+MAPRQM: 0      (Mega --> Shield)  - Mega is not providing memory (Flash and RAM) contents (real hardware is mapped)
+MAPRQI: 0      (Mega --> Shield)  - Mega is not providing IO (GPIO, CTC) contents (real hardware is mapped)
+    X1: 0      (Z80  --> Mega)    - Asserted, means Z80 is doing an opcode fetch cycle
+
+    M1 ASSERT
+State: Opcode 1
+   CLK DEASSERT
+    X1 ASSERT
+Trace Menu
+==========
+t:Mega drive n tstates       f:Mega drive tstates forever
+c:Mega drive tstates, continues to given Z80 instruction address
+n:Mega drive tstates until next Z80 instruction
+F:Free run (at ~4.5MHz)      M:Mega provide clock (at ~80Hz)
+G:Mega take Z80 bus (BUSREQ) R:Mega release Z80 bus
+I:Mega take IO map           i:Hardware take IO map
+J:Mega take memory map       j:Hardware take memory map
+r:reset Z80
+1:assert reset               0:deassert reset
+b:Breakpoint                 B:Toggle breakpoint
+-:Display trace              =:Display II Trace
+X:Assert INT x:desaart INT   Y:Assert NMI  y:Deassert NMI
+return: drive half a clock   q:quit menu
+trace> 
+```
+
+The Z80 is now ready to read the opcode at address 0x0003, which is the second instruction in the example code. The first instruction (which is fully executed now) is this one:
+
+```    LD Sp, 09000H
+```
+
+which loads the stack pointer with the value 0x9000. We should, therefore, now have 0x9000 in the stack pointer inside the Z80. To see the value of the registers in the Z80, press the 'g' key:
+
+```
+trace>    CLK ASSERT
+Trace Menu
+==========
+t:Mega drive n tstates       f:Mega drive tstates forever
+c:Mega drive tstates, continues to given Z80 instruction address
+n:Mega drive tstates until next Z80 instruction
+F:Free run (at ~4.5MHz)      M:Mega provide clock (at ~80Hz)
+G:Mega take Z80 bus (BUSREQ) R:Mega release Z80 bus
+I:Mega take IO map           i:Hardware take IO map
+J:Mega take memory map       j:Hardware take memory map
+r:reset Z80
+1:assert reset               0:deassert reset
+b:Breakpoint                 B:Toggle breakpoint
+-:Display trace              =:Display II Trace
+X:Assert INT x:desaart INT   Y:Assert NMI  y:Deassert NMI
+return: drive half a clock   q:quit menu
+```
+
+Nothing much appears in the terminal window. But if you look in the register display window you should see something like:
+```
+PC :0003  .... ....
+SP :9000  .... ....
+AF :2530  .... ....
+BC :A175  .... ....
+DE :A175  .... ....
+HL :B9B9  .... ....
+AF':0000  .... ....
+BC':F300  .... ....
+DE':0001  .... ....
+HL':D258  .... ....
+IX :FFE1  .... ....
+IY :0000  .... ....
+I  : .... ....
+R  : .... ....
+
+```
+
+This shows the values of the registers in the Z80 and, as expected, the SP register (stack pointer) has the value 0x9000.
+Reading these registers is quite tricky as their values do not appear on the pins of the Z80 unless the registers are written to memory somewhere. To read the values Mega sketch can execute a small piece of code 'between' the example code instructions. The sketch captures the register values using this code. The code then puts everything back as it was as if it hadn't executed and the Z80 is then ready for the next instruction of the example code. When you select the 'g' menu option the 'between instructions' code is executed and the register values put in the register display window.
+
+Press enter until the Z80 is ready to fetch the opcode from address 0x0004:
+
+```
+trace> Bus state:Idle
+Addr:0004  Data:AA
+BUSREQ: 1      (Mega --> Z80)
+BUSACK: 1      (Z80  --> Mega)
+    M1: 1      (Z80  --> Mega)
+  MREQ: 0      (Z80  --> Mega)    - Asserted, means address bus holds a memory address for a read or write
+ IOREQ: 1      (Z80  --> Mega)
+  RFSH: 1      (Z80  --> Mega)
+    WR: 1      (Z80  --> Mega)
+    RD: 0      (Z80  --> Mega)    - Asserted, means the Z80 wants to read data from external device
+   NMI: 1      (Mega --> Z80)
+   INT: 1      (Mega --> Z80)
+  WAIT: 1      (Mega --> Z80)
+   CLK: 0      (Mega --> Z80)     - Asserted, means Z80 is in the second half of a T-state
+   RES: 1      (Mega --> Z80)
+MAPRQM: 0      (Mega --> Shield)  - Mega is not providing memory (Flash and RAM) contents (real hardware is mapped)
+MAPRQI: 0      (Mega --> Shield)  - Mega is not providing IO (GPIO, CTC) contents (real hardware is mapped)
+    X1: 1      (Z80  --> Mega)
+
+  MREQ ASSERT
+State: Memory Access
+    RD ASSERT
+State: Memory Read Access
+   CLK ASSERT
+```
+
+Another instruction has been eecuted. Now press 'g' to read the registers. 
+
+```
+PC :0005 0003  .... ....
+SP :9000 9000  .... ....
+AF :AA30 2530  .... ....
+BC :A175 A175  .... ....
+DE :A175 A175  .... ....
+HL :B9B9 B9B9  .... ....
+AF':0000 0000  .... ....
+BC':F300 F300  .... ....
+DE':0001 0001  .... ....
+HL':D258 D258  .... ....
+IX :FFE1 FFE1  .... ....
+IY :0000 0000  .... ....
+I  : .... ....
+R  : .... ....
+```
+
+You may have to press 'g' more than once to get the register display to show up. This is because the registers are using th e'between instruction' code and that can't run if the Z80 is already fetching an instruction (M1 asserted). The 'g' code therefore has to drive any currently executing instruction before it can drive it's own 'between' code. Hence more than one 'g' command. (the 'g' command lasways stops at the end of an instruction).
+
+You can see though, that the AF register has changed value. It now has '0xAA' in the accumulator (A register). This is as expectd as the second instruction is :
+
+```
+    LD A, 0FFh
+```
+
+The left hand column in the register window contains the latest register values. The ones to the right are the value history. Red values are changed ones relative to their most recent history.
+
+Clocking instructions using the enter key is a bit tedious so there's a way to eecute the next instruction, this is the 'n' command in the trace menu. If you run 'n' then 'g' you can see the PC update in th eregister window and the register contents change as the program executes. Do this a few times and watch the example code execute and the register values update.
+
+If you want to start again, reset the Z80 and eecute instructions again. You can always use the enter key to clock and see bus states in between using the 'n' command. As mentioned the 'g' command may require a couple of invocations if you do this due to the bus states. If you use 'n' then the 'g'command should work fine.
+
+
+
+
