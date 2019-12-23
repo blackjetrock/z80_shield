@@ -825,7 +825,7 @@ You may have to press 'g' more than once to get the register display to show up.
 You can see though, that the AF register has changed value. It now has '0xAA' in the accumulator (A register). This is as expectd as the second instruction is :
 
 ```
-    LD A, 0FFh
+    LD A, 0AAh
 ```
 
 The left hand column in the register window contains the latest register values. The ones to the right are the value history. Red values are changed ones relative to their most recent history.
