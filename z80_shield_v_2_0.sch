@@ -16890,3 +16890,10 @@ L 36300 34600 36400 34700 10 30 0 0 -1 -1
 T 36500 34400 5 8 0 0 180 0 1
 device=none
 }
+T 49600 70800 9 10 1 0 0 0 6
+ERRATA
+SW0 should be on Mega digital output 6
+SW1 should be on Mega digital output 7
+
+Cut tracks to PIO U9 pins 7 and 8 and wire 
+SW0 and SW1 to Mega. 
