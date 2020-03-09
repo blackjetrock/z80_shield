@@ -9,7 +9,11 @@ The PCB is powered by the Mega when it is plugged in and by a USB socket when ru
 Only run from one USB socket at a time, i.e. don't plug the PCB USB in if there's a Mega attached (powered or not).
 
 This is a work in progress, two of the latest V2.0 PCBs have been built and work. It's a medium difficulty build, there's some 
-surface mount and the flash chip is a package that isn't the easiest to solder but nothing too impossible.
+surface mount and the flash chip is a package that isn't the easiest to solder but nothing too impossible. There's two tracks to cut and two
+wires to solder. These are the SW0 and SW1 signals. The V2.1 PCB schematic shows the correct wiring for these pins.
+The errata file for the V2.0 PCB has the modification details.
+
+I haven't made any V2_1 PCBs yet
 
 Let me know about any problems.
 

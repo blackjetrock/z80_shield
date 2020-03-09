@@ -17,3 +17,14 @@ Errors on V2.0 PCB
 13. Data bus is reversed on port c. Makes it slower to do direct port access
 
 
+Modifications
+
+A. Fix SW0 and SW1
+   SW0 and SW1 still on PIO
+   Digital 6 becomes SW0
+   Digital 7 becomes SW1
+   Cut tracks to pins 8 and 9 of U9
+   Wire pin 14 U40 to Digital 6
+   Wire pin 2 U40 to digital 7
+   Digital 6 is U5 pin 75
+   Digital 7 is U5 pin 76
