@@ -23,7 +23,6 @@
 *.txt
 *.rom
 *.bin
-*.pdf
 *-
 *.o
 *.map
