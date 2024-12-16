@@ -21,7 +21,7 @@ Let me know about any problems.
 Quick Start
 ===========
 
-The example that follows will make a lot more sense if you look at the Z80 databook and study the bus transactions, if you aren't alredy familiar with them. The Z80 shield tracing is at the clock edge level and is very detailed.
+The example that follows will make a lot more sense if you look at the Z80 databook and study the bus transactions, if you aren't already familiar with them. The Z80 shield tracing is at the clock edge level and is very detailed.
 
 Here's an example of what the Z80 Shield can do. It takes one of the built-in code examples and runs it. The example 
 code we will run is this:
