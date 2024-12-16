@@ -836,7 +836,7 @@ The left hand column in the register window contains the latest register values.
 
 Clocking instructions using the enter key is a bit tedious so there's a way to eecute the next instruction, this is the 'n' command in the trace menu. If you run 'n' then 'g' you can see the PC update in th eregister window and the register contents change as the program executes. Do this a few times and watch the example code execute and the register values update.
 
-If you want to start again, reset the Z80 and eecute instructions again. You can always use the enter key to clock and see bus states in between using the 'n' command. As mentioned the 'g' command may require a couple of invocations if you do this due to the bus states. If you use 'n' then the 'g' command should work fine.
+If you want to start again, reset the Z80 and execute instructions again. You can always use the enter key to clock and see bus states in between using the 'n' command. As mentioned the 'g' command may require a couple of invocations if you do this due to the bus states. If you use 'n' then the 'g' command should work fine.
 
 
 
