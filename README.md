@@ -183,7 +183,7 @@ Working address: 0 Space:MEM  Bus state:Idle
 memory> 
 ```
 
-You are now in th ememory menu and can perform tasks to do with the memory devices on the Z80 shield. We need to erase the chip and then write the selected example code to the flash chip (in every sector).
+You are now in the memory menu and can perform tasks to do with the memory devices on the Z80 shield. We need to erase the chip and then write the selected example code to the flash chip (in every sector).
 
 Type 'E' to erase the chip:
 
